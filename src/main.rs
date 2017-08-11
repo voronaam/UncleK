@@ -23,11 +23,11 @@ use futures::{future, Future, BoxFuture};
 use tokio_proto::TcpServer;
 use nom::IResult;
 
+mod parser;
+
 pub struct KafkaCodec;
 pub struct KafkaRequest;
 pub struct KafkaResponse;
-
-named!(size_header<&[u8], &[u8]>, length_bytes!(nom::be_u32) );
 
 impl Decoder for KafkaCodec {
     type Item = KafkaRequest;
@@ -35,10 +35,16 @@ impl Decoder for KafkaCodec {
 
     fn decode(&mut self, buf: &mut BytesMut) -> io::Result<Option<KafkaRequest>> {
         let imm_buf = buf.clone(); // make sure we do not use this buffer in a mutable way, except for the split_to call.
-        if let IResult::Done(tail, body) = size_header(&imm_buf[..]) {
+        if let IResult::Done(tail, body) = parser::size_header(&imm_buf[..]) {
             buf.split_to(imm_buf.len() - tail.len()); // A little bit funny way to determine how many bytes nom consumed
             info!("Got a message of {} bytes", body.len());
-            Ok(Some(KafkaRequest{}))
+            if let IResult::Done(_, req) = parser::request_header(&body) {
+				info!("Parsed a message {:?}", req);
+				Ok(Some(KafkaRequest{}))
+			} else {
+				info!("Did not deserialize");
+				Ok(None)
+			}
         } else {
             Ok(None)
         }
