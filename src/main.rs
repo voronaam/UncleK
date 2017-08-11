@@ -34,15 +34,15 @@ impl Decoder for KafkaCodec {
     type Error = io::Error;
 
     fn decode(&mut self, buf: &mut BytesMut) -> io::Result<Option<KafkaRequest>> {
-		let imm_buf = buf.clone(); // make sure we do not use this buffer in a mutable way, except for the split_to call.
-		if let IResult::Done(tail, body) = size_header(&imm_buf[..]) {
-			buf.split_to(imm_buf.len() - tail.len()); // A little bit funny way to determine how many bytes nom consumed
-			info!("Got a message of {} bytes", body.len());
-			Ok(Some(KafkaRequest{}))
-		} else {
-			Ok(None)
-		}
-	}
+        let imm_buf = buf.clone(); // make sure we do not use this buffer in a mutable way, except for the split_to call.
+        if let IResult::Done(tail, body) = size_header(&imm_buf[..]) {
+            buf.split_to(imm_buf.len() - tail.len()); // A little bit funny way to determine how many bytes nom consumed
+            info!("Got a message of {} bytes", body.len());
+            Ok(Some(KafkaRequest{}))
+        } else {
+            Ok(None)
+        }
+    }
 }
 
 impl Encoder for KafkaCodec {
@@ -75,15 +75,15 @@ impl Service for KafkaService {
     type Future = BoxFuture<Self::Response, Self::Error>;
 
     fn call(&self, req: Self::Request) -> Self::Future {
-		// println!("Got here 1");
+        // println!("Got here 1");
         future::ok(KafkaResponse{}).boxed()
     }
 }
 
 fn main() {
-	pretty_env_logger::init().unwrap();
-	let addr = "0.0.0.0:9092".parse().expect("Please check the configured address and port number");
-	let server = TcpServer::new(KafkaProto, addr);
-	server.serve(|| Ok(KafkaService));
+    pretty_env_logger::init().unwrap();
+    let addr = "0.0.0.0:9092".parse().expect("Please check the configured address and port number");
+    let server = TcpServer::new(KafkaProto, addr);
+    server.serve(|| Ok(KafkaService));
 }
 
