@@ -7,6 +7,10 @@ extern crate tokio_service;
 #[macro_use]
 extern crate nom;
 
+extern crate pretty_env_logger;
+#[macro_use]
+extern crate log;
+
 use std::io;
 use std::str;
 use bytes::BytesMut;
@@ -33,7 +37,7 @@ impl Decoder for KafkaCodec {
 		let imm_buf = buf.clone(); // make sure we do not use this buffer in a mutable way, except for the split_to call.
 		if let IResult::Done(tail, body) = size_header(&imm_buf[..]) {
 			buf.split_to(imm_buf.len() - tail.len()); // A little bit funny way to determine how many bytes nom consumed
-			println!("Got a message of {} bytes", body.len());
+			info!("Got a message of {} bytes", body.len());
 			Ok(Some(KafkaRequest{}))
 		} else {
 			Ok(None)
@@ -77,6 +81,7 @@ impl Service for KafkaService {
 }
 
 fn main() {
+	pretty_env_logger::init().unwrap();
 	let addr = "0.0.0.0:9092".parse().expect("Please check the configured address and port number");
 	let server = TcpServer::new(KafkaProto, addr);
 	server.serve(|| Ok(KafkaService));
