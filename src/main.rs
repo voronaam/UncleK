@@ -24,10 +24,11 @@ use tokio_proto::TcpServer;
 use nom::IResult;
 
 mod parser;
+mod backend;
 
 pub struct KafkaCodec;
-pub struct KafkaRequest;
-pub struct KafkaResponse;
+use parser::KafkaRequest;
+use backend::KafkaResponse;
 
 impl Decoder for KafkaCodec {
     type Item = KafkaRequest;
@@ -38,9 +39,9 @@ impl Decoder for KafkaCodec {
         if let IResult::Done(tail, body) = parser::size_header(&imm_buf[..]) {
             buf.split_to(imm_buf.len() - tail.len()); // A little bit funny way to determine how many bytes nom consumed
             info!("Got a message of {} bytes", body.len());
-            if let IResult::Done(_, req) = parser::request_header(&body) {
-				info!("Parsed a message {:?}", req);
-				Ok(Some(KafkaRequest{}))
+            if let IResult::Done(_, req) = parser::kafka_request(&body) {
+				debug!("Parsed a message {:?} {:?}", req.header, req.req);
+				Ok(Some(req))
 			} else {
 				info!("Did not deserialize");
 				Ok(None)
@@ -81,8 +82,10 @@ impl Service for KafkaService {
     type Future = BoxFuture<Self::Response, Self::Error>;
 
     fn call(&self, req: Self::Request) -> Self::Future {
-        // println!("Got here 1");
-        future::ok(KafkaResponse{}).boxed()
+		info!("Sending a request to the backend {:?}", req);
+		let response = backend::handle_request(req);
+		info!("Response from the backend {:?}", response);
+        future::ok(response).boxed()
     }
 }
 
