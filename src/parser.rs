@@ -1,4 +1,4 @@
-use nom::{IResult,ErrorKind,be_u16,be_u32,be_i16,be_i32,alphanumeric};
+use nom::{IResult,ErrorKind,be_u16,be_u32,be_i16,be_i32};
 use std::fmt;
 
 // Anything that is a Kafka ApiKey request.

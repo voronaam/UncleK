@@ -25,6 +25,7 @@ use nom::IResult;
 
 mod parser;
 mod backend;
+mod writer;
 
 pub struct KafkaCodec;
 use parser::KafkaRequest;
@@ -57,6 +58,7 @@ impl Encoder for KafkaCodec {
     type Error = io::Error;
 
     fn encode(&mut self, msg: KafkaResponse, buf: &mut BytesMut) -> io::Result<()> {
+		writer::to_bytes(&msg, buf);
         Ok(())
     }
 }

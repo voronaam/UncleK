@@ -1,11 +1,13 @@
-use parser;
 use std::fmt;
 use std::marker;
+
+use bytes::{BytesMut, BufMut, BigEndian};
 
 use parser::KafkaRequest;
 
 // Anything that is a Kafka response body.
 pub trait ApiResponseLike: fmt::Debug + marker::Send {
+	fn to_bytes(self: &Self, out: &mut BytesMut);
 }
 
 #[derive(Debug)]
@@ -30,11 +32,27 @@ impl KafkaResponseHeader {
 
 #[derive(Debug)]
 pub struct VersionsResponse {}
-impl ApiResponseLike for VersionsResponse {}
+impl ApiResponseLike for VersionsResponse {
+	fn to_bytes(self: &Self, out: &mut BytesMut) {
+		out.put_u16::<BigEndian>(0); // error_code
+		out.put_u32::<BigEndian>(4); // number of api calls supported
+		versions_supported_call(out, 0, 0, 2);
+		versions_supported_call(out, 1, 0, 3);
+		versions_supported_call(out, 2, 0, 1);
+		versions_supported_call(out, 3, 0, 2);
+	}
+}
+fn versions_supported_call(out: &mut BytesMut, opcode: u16, min: u16, max: u16) {
+	out.put_u16::<BigEndian>(opcode);
+	out.put_u16::<BigEndian>(min);
+	out.put_u16::<BigEndian>(max);
+}
 
 #[derive(Debug)]
 pub struct ErrorResponse {}
-impl ApiResponseLike for ErrorResponse {}
+impl ApiResponseLike for ErrorResponse {
+	fn to_bytes(self: &Self, out: &mut BytesMut) {}
+}
 
 pub fn handle_request(req: KafkaRequest) -> KafkaResponse {
 	match (req.header.opcode, req.header.version) {
