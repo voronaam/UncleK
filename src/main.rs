@@ -29,7 +29,7 @@ mod writer;
 
 pub struct KafkaCodec;
 use parser::KafkaRequest;
-use backend::KafkaResponse;
+use writer::KafkaResponse;
 
 impl Decoder for KafkaCodec {
     type Item = KafkaRequest;

@@ -63,7 +63,10 @@ pub fn kafka_request(input:&[u8]) -> IResult<&[u8], KafkaRequest> {
         match req {
            KafkaRequestHeader {opcode:0, .. } => publish(req, tail),
            KafkaRequestHeader {opcode:18, .. } => versions(req, tail),
-           _ => IResult::Error(error_code!(ErrorKind::Custom(1)))
+           _ => {
+               warn!("Not yet implemented request {:?}", req);
+               IResult::Error(error_code!(ErrorKind::Custom(1)))
+           }
         }
     } else {
         IResult::Error(error_code!(ErrorKind::Custom(0)))
