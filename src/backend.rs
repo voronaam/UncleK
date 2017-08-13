@@ -1,10 +1,11 @@
 
-use parser::KafkaRequest;
+use parser::{KafkaRequest, KafkaRequestHeader, ApiRequest};
 use writer::*;
 
 pub fn handle_request(req: KafkaRequest) -> KafkaResponse {
-    match (req.header.opcode, req.header.version) {
-        (18, _) => handle_versions(&req),
+    match req.req {
+        ApiRequest::Metadata { topics } => handle_metadata(&req.header, &topics),
+        ApiRequest::Versions => handle_versions(&req),
         _ => handle_unknown(&req)
     }
 }
@@ -12,7 +13,7 @@ pub fn handle_request(req: KafkaRequest) -> KafkaResponse {
 fn handle_versions(req: &KafkaRequest) -> KafkaResponse {
     KafkaResponse {
         header: KafkaResponseHeader::new(req.header.correlation_id),
-        req: Box::new(VersionsResponse{})
+        req: ApiResponse::VersionsResponse
     }
 }
 
@@ -20,6 +21,13 @@ fn handle_unknown(req: &KafkaRequest) -> KafkaResponse {
     warn!("Unknown request {:?}", req);
     KafkaResponse {
         header: KafkaResponseHeader::new(req.header.correlation_id),
-        req: Box::new(ErrorResponse{})
+        req: ApiResponse::ErrorResponse
+    }
+}
+
+fn handle_metadata(header: &KafkaRequestHeader, topics: &Vec<String>) -> KafkaResponse {
+    KafkaResponse {
+        header: KafkaResponseHeader::new(header.correlation_id),
+        req: ApiResponse::metadata_healthy(header.version, topics)
     }
 }
