@@ -41,12 +41,12 @@ impl Decoder for KafkaCodec {
             buf.split_to(imm_buf.len() - tail.len()); // A little bit funny way to determine how many bytes nom consumed
             info!("Got a message of {} bytes", body.len());
             if let IResult::Done(_, req) = parser::kafka_request(&body) {
-				debug!("Parsed a message {:?} {:?}", req.header, req.req);
-				Ok(Some(req))
-			} else {
-				info!("Did not deserialize");
-				Ok(None)
-			}
+                debug!("Parsed a message {:?} {:?}", req.header, req.req);
+                Ok(Some(req))
+            } else {
+                info!("Did not deserialize");
+                Ok(None)
+            }
         } else {
             Ok(None)
         }
@@ -58,7 +58,7 @@ impl Encoder for KafkaCodec {
     type Error = io::Error;
 
     fn encode(&mut self, msg: KafkaResponse, buf: &mut BytesMut) -> io::Result<()> {
-		writer::to_bytes(&msg, buf);
+        writer::to_bytes(&msg, buf);
         Ok(())
     }
 }
@@ -84,9 +84,9 @@ impl Service for KafkaService {
     type Future = BoxFuture<Self::Response, Self::Error>;
 
     fn call(&self, req: Self::Request) -> Self::Future {
-		info!("Sending a request to the backend {:?}", req);
-		let response = backend::handle_request(req);
-		info!("Response from the backend {:?}", response);
+        info!("Sending a request to the backend {:?}", req);
+        let response = backend::handle_request(req);
+        info!("Response from the backend {:?}", response);
         future::ok(response).boxed()
     }
 }
