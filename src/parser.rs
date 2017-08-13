@@ -63,8 +63,7 @@ fn versions(header:KafkaRequestHeader, input:&[u8]) -> IResult<&[u8], KafkaReque
 
 fn metadata(header:KafkaRequestHeader, input:&[u8]) -> IResult<&[u8], KafkaRequest> {
     do_parse!(input,
-      count: be_u32 >>
-      topics: many_m_n!(count as usize, count as usize, map!(length_bytes!(be_u16), kafka_string)) >>
+      topics: length_count!(be_u32, map!(length_bytes!(be_u16), kafka_string)) >>
     (
       KafkaRequest {
         header: header,
