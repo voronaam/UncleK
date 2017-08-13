@@ -27,9 +27,10 @@ mod parser;
 mod backend;
 mod writer;
 
-pub struct KafkaCodec;
 use parser::KafkaRequest;
 use writer::KafkaResponse;
+
+pub struct KafkaCodec;
 
 impl Decoder for KafkaCodec {
     type Item = KafkaRequest;
@@ -39,12 +40,11 @@ impl Decoder for KafkaCodec {
         let imm_buf = buf.clone(); // make sure we do not use this buffer in a mutable way, except for the split_to call.
         if let IResult::Done(tail, body) = parser::size_header(&imm_buf[..]) {
             buf.split_to(imm_buf.len() - tail.len()); // A little bit funny way to determine how many bytes nom consumed
-            info!("Got a message of {} bytes", body.len());
+            debug!("Got a message of {} bytes", body.len());
             if let IResult::Done(_, req) = parser::kafka_request(&body) {
-                debug!("Parsed a message {:?} {:?}", req.header, req.req);
+                debug!("Parsed a message {:?}", req);
                 Ok(Some(req))
             } else {
-                info!("Did not deserialize");
                 Ok(None)
             }
         } else {
@@ -84,9 +84,9 @@ impl Service for KafkaService {
     type Future = BoxFuture<Self::Response, Self::Error>;
 
     fn call(&self, req: Self::Request) -> Self::Future {
-        info!("Sending a request to the backend {:?}", req);
+        debug!("Sending a request to the backend {:?}", req);
         let response = backend::handle_request(req);
-        info!("Response from the backend {:?}", response);
+        debug!("Response from the backend {:?}", response);
         future::ok(response).boxed()
     }
 }

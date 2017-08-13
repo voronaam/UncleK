@@ -2,8 +2,7 @@ use nom::{IResult,ErrorKind,be_u16,be_u32,be_i16,be_i32};
 use std::fmt;
 
 // Anything that is a Kafka ApiKey request.
-pub trait ApiRequestLike: fmt::Debug {
-}
+pub trait ApiRequestLike: fmt::Debug {}
 
 #[derive(Debug)]
 pub struct KafkaRequest {
@@ -20,15 +19,25 @@ pub struct KafkaRequestHeader {
 }
 
 #[derive(Debug)]
+pub struct PublishRequest {}
+impl ApiRequestLike for PublishRequest {}
+
+#[derive(Debug)]
 pub struct VersionsRequest {}
 impl ApiRequestLike for VersionsRequest {}
 
 #[derive(Debug)]
-pub struct PublishRequest {}
-impl ApiRequestLike for PublishRequest {}
+pub struct MetadataRequest {
+    pub topics: Vec<String>
+}
+impl ApiRequestLike for MetadataRequest {}
 
 pub fn size_header(input: &[u8]) -> IResult<&[u8], &[u8]> {
     length_bytes!(input, be_u32)
+}
+
+fn kafka_string(input:&[u8]) -> String {
+    String::from_utf8_lossy(input).to_string()
 }
 
 fn request_header(input:&[u8]) -> IResult<&[u8], KafkaRequestHeader> {
@@ -42,16 +51,29 @@ fn request_header(input:&[u8]) -> IResult<&[u8], KafkaRequestHeader> {
         opcode: opcode,
         version: version,
         correlation_id: correlation_id,
-        client_id: String::from_utf8_lossy(client_id).to_string()
+        client_id: kafka_string(client_id)
      }
    )
   )
 }
 
 fn versions(header:KafkaRequestHeader, input:&[u8]) -> IResult<&[u8], KafkaRequest> {
-    debug!("Parsing out ApiVersions request");
-    // It has no content in the request
     IResult::Done(input, KafkaRequest{header: header, req: Box::new(VersionsRequest {})})
+}
+
+fn metadata(header:KafkaRequestHeader, input:&[u8]) -> IResult<&[u8], KafkaRequest> {
+    do_parse!(input,
+      count: be_u32 >>
+      topics: many_m_n!(count as usize, count as usize, map!(length_bytes!(be_u16), kafka_string)) >>
+    (
+      KafkaRequest {
+        header: header,
+        req: Box::new(MetadataRequest {
+          topics: topics
+        })
+      }
+    )
+   )
 }
 
 fn publish(header:KafkaRequestHeader, input:&[u8]) -> IResult<&[u8], KafkaRequest> {
@@ -62,6 +84,7 @@ pub fn kafka_request(input:&[u8]) -> IResult<&[u8], KafkaRequest> {
     if let IResult::Done(tail, req) = request_header(input) {
         match req {
            KafkaRequestHeader {opcode:0, .. } => publish(req, tail),
+           KafkaRequestHeader {opcode:3, .. } => metadata(req, tail),
            KafkaRequestHeader {opcode:18, .. } => versions(req, tail),
            _ => {
                warn!("Not yet implemented request {:?}", req);

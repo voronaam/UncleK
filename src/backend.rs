@@ -17,7 +17,7 @@ fn handle_versions(req: &KafkaRequest) -> KafkaResponse {
 }
 
 fn handle_unknown(req: &KafkaRequest) -> KafkaResponse {
-    warn!("Unknown request");
+    warn!("Unknown request {:?}", req);
     KafkaResponse {
         header: KafkaResponseHeader::new(req.header.correlation_id),
         req: Box::new(ErrorResponse{})
