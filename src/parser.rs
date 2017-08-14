@@ -6,7 +6,7 @@ pub enum ApiRequest {
     Publish {
         acks: u16,
         timeout: u32,
-        topics: Vec<(Option<String>, Vec<KafkaMessage>)>
+        topics: Vec<KafkaMessageSet>
     },
     Versions,
     Metadata {
@@ -28,12 +28,19 @@ pub struct KafkaRequestHeader {
     pub client_id: String
 }
 
+
+#[derive(Debug)]
+pub struct KafkaMessageSet {
+    pub topic: String,
+    pub messages: Vec<KafkaMessage>
+}
+
 #[derive(Debug)]
 pub struct KafkaMessage {
     pub partition: u32,
     timestamp: u64,
-    key: Vec<u8>,
-    value: Vec<u8>
+    pub key: Vec<u8>,
+    pub value: Vec<u8>
 }
 
 pub fn size_header(input: &[u8]) -> IResult<&[u8], &[u8]> {
@@ -102,8 +109,8 @@ fn publish(header:KafkaRequestHeader, input:&[u8]) -> IResult<&[u8], KafkaReques
     )
    )
 }
-named!(publish_topic<&[u8], (Option<String>, Vec<KafkaMessage>)>, do_parse!(
-    name: opt_kafka_string >>
+named!(publish_topic<&[u8], KafkaMessageSet>, do_parse!(
+    name:    map!(length_bytes!(be_u16), kafka_string) >>
     streams: length_count!(be_u32, do_parse!(
         partition:     be_u32 >>
         /*msg_bytes*/  be_u32 >>
@@ -126,7 +133,10 @@ named!(publish_topic<&[u8], (Option<String>, Vec<KafkaMessage>)>, do_parse!(
           }
         ))) >>
     (
-      (name, streams)
+      KafkaMessageSet {
+          topic: name,
+          messages: streams
+      }
     )
 ));
 

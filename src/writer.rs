@@ -8,6 +8,10 @@ pub enum ApiResponse {
     MetadataResponse {
         version: i16,
         cluster: ClusterMetadata
+    },
+    PublishResponse {
+        version: i16,
+        responses: Vec<(String, Vec<u32>)>
     }
 }
 
@@ -36,6 +40,7 @@ pub fn to_bytes(msg: &KafkaResponse, out: &mut BytesMut) {
     match msg.req {
         ApiResponse::VersionsResponse => versions_to_bytes(&mut buf),
         ApiResponse::MetadataResponse { version: 2, ref cluster } => metadata_to_bytes(cluster, &mut buf),
+        ApiResponse::PublishResponse { version: 2, ref responses } => publish_to_bytes(responses, &mut buf),
         _ => error_to_bytes(&mut buf)
     }
     out.put_u32::<BigEndian>(buf.len() as u32 + 4); // 4 is the length of the size correlation id.
@@ -169,6 +174,22 @@ impl TopicMetadata {
         }
     }
 }
+
+fn publish_to_bytes(msg: &Vec<(String, Vec<u32>)>, out: &mut BytesMut) {
+    out.put_u32::<BigEndian>(msg.len() as u32);
+    for ref topic in msg {
+        string_to_bytes(&topic.0, out);
+        out.put_u32::<BigEndian>(topic.1.len() as u32);
+        for partition in &topic.1 {
+            out.put_u32::<BigEndian>(*partition);
+            out.put_u16::<BigEndian>(0); // error code
+            out.put_u64::<BigEndian>(0); // offset
+            out.put_u64::<BigEndian>(0); // log append time
+        }
+    }
+    out.put_u32::<BigEndian>(0); // throttle_time
+}
+
 
 impl ApiResponse {
     pub fn metadata_healthy(version: i16, topics: &Vec<String>) -> ApiResponse {
