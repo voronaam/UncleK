@@ -1,8 +1,12 @@
 extern crate bytes;
 extern crate futures;
+extern crate futures_cpupool;
 extern crate tokio_io;
 extern crate tokio_proto;
 extern crate tokio_service;
+
+extern crate r2d2;
+extern crate r2d2_postgres;
 
 #[macro_use]
 extern crate nom;
@@ -20,8 +24,10 @@ use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_io::codec::Framed;
 use tokio_service::Service;
 use futures::{future, Future, BoxFuture};
+use futures_cpupool::CpuPool;
 use tokio_proto::TcpServer;
 use nom::IResult;
+use r2d2_postgres::{TlsMode, PostgresConnectionManager};
 
 mod parser;
 mod backend;
@@ -75,7 +81,10 @@ impl<T: AsyncRead + AsyncWrite + 'static> ServerProto<T> for KafkaProto {
     }
 }
 
-pub struct KafkaService;
+pub struct KafkaService {
+    thread_pool: CpuPool,
+    db_pool: r2d2::Pool<r2d2_postgres::PostgresConnectionManager>, // Also to be moved into the backend
+}
 
 impl Service for KafkaService {
     type Request = KafkaRequest;
@@ -84,10 +93,15 @@ impl Service for KafkaService {
     type Future = BoxFuture<Self::Response, Self::Error>;
 
     fn call(&self, req: Self::Request) -> Self::Future {
-        debug!("Sending a request to the backend {:?}", req);
-        let response = backend::handle_request(req);
-        debug!("Response from the backend {:?}", response);
-        future::ok(response).boxed()
+        let db = self.db_pool.clone();
+        let f = self.thread_pool.spawn_fn(move || {
+            debug!("Sending a request to the backend {:?}", req);
+            let response = backend::handle_request(req, db);
+            debug!("Response from the backend {:?}", response);
+            future::ok(response)
+        });
+        f.boxed()
+        // future::ok(response).boxed()
     }
 }
 
@@ -95,6 +109,18 @@ fn main() {
     pretty_env_logger::init().unwrap();
     let addr = "0.0.0.0:9092".parse().expect("Please check the configured address and port number");
     let server = TcpServer::new(KafkaProto, addr);
-    server.serve(|| Ok(KafkaService));
+
+    let thread_pool = CpuPool::new(10);
+    
+    // DB config. Will need to move inside backend
+    let db_url = "postgres://avorona:avorona@localhost";
+    let db_config = r2d2::Config::default();
+    let db_manager = PostgresConnectionManager::new(db_url, TlsMode::None).unwrap();
+    let db_pool = r2d2::Pool::new(db_config, db_manager).unwrap();
+
+    server.serve(move || Ok(KafkaService {
+        thread_pool: thread_pool.clone(),
+        db_pool: db_pool.clone()
+    }));
 }
 

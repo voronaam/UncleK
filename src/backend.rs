@@ -1,11 +1,13 @@
 
 use parser::*;
 use writer::*;
+use r2d2_postgres;
+use r2d2::Pool;
 
-pub fn handle_request(req: KafkaRequest) -> KafkaResponse {
+pub fn handle_request(req: KafkaRequest, db: Pool<r2d2_postgres::PostgresConnectionManager>) -> KafkaResponse {
     match req.req {
         ApiRequest::Metadata { topics } => handle_metadata(&req.header, &topics),
-        ApiRequest::Publish { topics, .. } => handle_publish(&req.header, &topics),
+        ApiRequest::Publish { topics, .. } => handle_publish(&req.header, &topics, &db),
         ApiRequest::Versions => handle_versions(&req),
         _ => handle_unknown(&req)
     }
@@ -33,7 +35,7 @@ fn handle_metadata(header: &KafkaRequestHeader, topics: &Vec<String>) -> KafkaRe
     }
 }
 
-fn handle_publish(header: &KafkaRequestHeader, topics: &Vec<KafkaMessageSet>) -> KafkaResponse {
+fn handle_publish(header: &KafkaRequestHeader, topics: &Vec<KafkaMessageSet>, db: &Pool<r2d2_postgres::PostgresConnectionManager>) -> KafkaResponse {
     let mut responses: Vec<(String, Vec<u32>)> = Vec::new();
     // TODO Actually save the data
     // Fake the response for now
@@ -41,6 +43,11 @@ fn handle_publish(header: &KafkaRequestHeader, topics: &Vec<KafkaMessageSet>) ->
         let mut partition_responses: Vec<u32> = Vec::new();
         for ref partition in &topic.messages {
             info!("Actually saving message {:?}:{:?} to topic {:?} partition {:?}", partition.key, partition.value, topic.topic, partition.partition);
+            
+            // CREATE TABLE test (id serial, partition int NOT NULL, key BYTEA, value BYTEA);
+            let conn = db.get().expect("Could not get a DB connection");
+            conn.execute(format!("INSERT INTO {} (partition, key, value) VALUES ($1, $2, $3)", topic.topic).as_str(),
+                 &[&(partition.partition as i64), &partition.key, &partition.value]).expect("Failed to insert to the DB");
             partition_responses.push(partition.partition);
         }
         responses.push((topic.topic.to_string(), partition_responses));

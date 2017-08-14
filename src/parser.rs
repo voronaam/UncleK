@@ -39,8 +39,8 @@ pub struct KafkaMessageSet {
 pub struct KafkaMessage {
     pub partition: u32,
     timestamp: u64,
-    pub key: Vec<u8>,
-    pub value: Vec<u8>
+    pub key: Option<Vec<u8> >,
+    pub value: Option<Vec<u8> >
 }
 
 pub fn size_header(input: &[u8]) -> IResult<&[u8], &[u8]> {
@@ -56,6 +56,14 @@ named!(opt_kafka_string<&[u8], Option<String> >,
     length_bytes!(be_u16)  => { |s| Some(kafka_string(s)) }
   )
 );
+
+named!(opt_kafka_bytes<&[u8], Option<Vec<u8> > >,
+  alt!(
+    tag!([0xff, 0xff, 0xff, 0xff]) => { |_| None } |
+    length_bytes!(be_u32)          => { |b:&[u8]| Some(b.iter().cloned().collect()) }
+  )
+);
+
 
 fn request_header(input:&[u8]) -> IResult<&[u8], KafkaRequestHeader> {
   do_parse!(input,
@@ -120,16 +128,14 @@ named!(publish_topic<&[u8], KafkaMessageSet>, do_parse!(
         /*magic */     tag!([1]) >>
         /*attributes*/ tag!([0]) >> // TODO: we'll need to parse it
         timestamp:     be_u64 >>
-        /*undoc1*/     opt_kafka_string >>
-        /*undoc2*/     opt_kafka_string >>
-        key:           length_bytes!(be_u16) >>
-        value:         length_bytes!(be_u16) >>
+        key:           opt_kafka_bytes >>
+        value:         opt_kafka_bytes >>
         (
           KafkaMessage {
             partition: partition,
             timestamp: timestamp,
-            key: key.iter().cloned().collect(),
-            value: value.iter().cloned().collect()
+            key: key,
+            value: value
           }
         ))) >>
     (
