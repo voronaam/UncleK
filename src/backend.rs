@@ -47,7 +47,7 @@ fn handle_publish(header: &KafkaRequestHeader, topics: &Vec<KafkaMessageSet>, db
             // CREATE TABLE test (id serial, partition int NOT NULL, key BYTEA, value BYTEA);
             let conn = db.get().expect("Could not get a DB connection");
             conn.execute(format!("INSERT INTO {} (partition, key, value) VALUES ($1, $2, $3)", topic.topic).as_str(),
-                 &[&(partition.partition as i64), &partition.key, &partition.value]).expect("Failed to insert to the DB");
+                 &[&(partition.partition as i32), &partition.key, &partition.value]).expect("Failed to insert to the DB");
             partition_responses.push(partition.partition);
         }
         responses.push((topic.topic.to_string(), partition_responses));

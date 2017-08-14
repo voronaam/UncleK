@@ -1,4 +1,5 @@
 use bytes::{BytesMut, BufMut, BigEndian};
+use hostname::get_hostname;
 
 // Anything that is a Kafka response body.
 #[derive(Debug)]
@@ -198,7 +199,7 @@ impl ApiResponse {
             cluster: ClusterMetadata {
                 brokers: vec![BrokerMetadata{
                     node_id: 0,
-                    host: "avlaptop".to_string(), // TODO
+                    host: get_hostname().expect("Failed to get localhost's hostname"),
                     port: 9092, // TODO
                     rack: None
                 }],

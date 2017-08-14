@@ -15,6 +15,8 @@ extern crate pretty_env_logger;
 #[macro_use]
 extern crate log;
 
+extern crate hostname;
+
 use std::io;
 use std::str;
 use bytes::BytesMut;
@@ -123,4 +125,3 @@ fn main() {
         db_pool: db_pool.clone()
     }));
 }
-
