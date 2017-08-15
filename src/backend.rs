@@ -9,6 +9,7 @@ pub fn handle_request(req: KafkaRequest, db: Pool<r2d2_postgres::PostgresConnect
         ApiRequest::Metadata { topics } => handle_metadata(&req.header, &topics),
         ApiRequest::Publish { topics, .. } => handle_publish(&req.header, &topics, &db),
         ApiRequest::Versions => handle_versions(&req),
+        ApiRequest::FindGroupCoordinator => handle_find_coordinator(&req),
         _ => handle_unknown(&req)
     }
 }
@@ -37,8 +38,6 @@ fn handle_metadata(header: &KafkaRequestHeader, topics: &Vec<String>) -> KafkaRe
 
 fn handle_publish(header: &KafkaRequestHeader, topics: &Vec<KafkaMessageSet>, db: &Pool<r2d2_postgres::PostgresConnectionManager>) -> KafkaResponse {
     let mut responses: Vec<(String, Vec<u32>)> = Vec::new();
-    // TODO Actually save the data
-    // Fake the response for now
     for ref topic in topics {
         let mut partition_responses: Vec<u32> = Vec::new();
         for ref partition in &topic.messages {
@@ -58,5 +57,12 @@ fn handle_publish(header: &KafkaRequestHeader, topics: &Vec<KafkaMessageSet>, db
             version: header.version,
             responses: responses
         }
+    }
+}
+
+fn handle_find_coordinator(req: &KafkaRequest) -> KafkaResponse {
+    KafkaResponse {
+        header: KafkaResponseHeader::new(req.header.correlation_id),
+        req: ApiResponse::GroupCoordinatorResponse
     }
 }

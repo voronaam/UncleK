@@ -11,7 +11,8 @@ pub enum ApiRequest {
     Versions,
     Metadata {
         topics: Vec<String>
-    }
+    },
+    FindGroupCoordinator
 }
 
 #[derive(Debug)]
@@ -151,6 +152,7 @@ pub fn kafka_request(input:&[u8]) -> IResult<&[u8], KafkaRequest> {
         match req {
            KafkaRequestHeader {opcode: 0, version: 2, .. } => publish(req, tail),
            KafkaRequestHeader {opcode: 3, .. } => metadata(req, tail),
+           KafkaRequestHeader {opcode:10, .. } => IResult::Done(input, KafkaRequest{header: req, req: ApiRequest::FindGroupCoordinator}),
            KafkaRequestHeader {opcode:18, .. } => versions(req, tail),
            _ => {
                warn!("Not yet implemented request {:?}", req);

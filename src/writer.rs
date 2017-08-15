@@ -13,7 +13,8 @@ pub enum ApiResponse {
     PublishResponse {
         version: i16,
         responses: Vec<(String, Vec<u32>)>
-    }
+    },
+    GroupCoordinatorResponse
 }
 
 #[derive(Debug)]
@@ -40,6 +41,7 @@ pub fn to_bytes(msg: &KafkaResponse, out: &mut BytesMut) {
     let mut buf = BytesMut::with_capacity(1024);
     match msg.req {
         ApiResponse::VersionsResponse => versions_to_bytes(&mut buf),
+        ApiResponse::GroupCoordinatorResponse => coordinator_to_bytes(&mut buf),
         ApiResponse::MetadataResponse { version: 2, ref cluster } => metadata_to_bytes(cluster, &mut buf),
         ApiResponse::PublishResponse { version: 2, ref responses } => publish_to_bytes(responses, &mut buf),
         _ => error_to_bytes(&mut buf)
@@ -209,4 +211,12 @@ impl ApiResponse {
             }
         }
     }
+}
+
+fn coordinator_to_bytes(out: &mut BytesMut) {
+    out.put_u16::<BigEndian>(0); // error_code
+    out.put_u32::<BigEndian>(0); // node_id
+    string_to_bytes(&get_hostname().expect("Failed to get localhost's hostname"), out);
+    out.put_u32::<BigEndian>(9092); // port
+    
 }
