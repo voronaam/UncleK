@@ -16,7 +16,10 @@ pub enum ApiResponse {
     },
     GroupCoordinatorResponse,
     JoinGroupResponse {
-        protocol: Option<String>
+        protocol: Option<(String, Option<Vec<u8>>)>
+    },
+    SyncGroupResponse {
+        assignment: Option<Vec<u8>>
     }
 }
 
@@ -48,6 +51,7 @@ pub fn to_bytes(msg: &KafkaResponse, out: &mut BytesMut) {
         ApiResponse::JoinGroupResponse {ref protocol} => join_group_to_bytes(protocol, &mut buf),
         ApiResponse::MetadataResponse { version: 2, ref cluster } => metadata_to_bytes(cluster, &mut buf),
         ApiResponse::PublishResponse { version: 2, ref responses } => publish_to_bytes(responses, &mut buf),
+        ApiResponse::SyncGroupResponse { ref assignment } => sync_group_to_bytes(assignment, &mut buf),
         _ => error_to_bytes(&mut buf)
     }
     out.put_u32::<BigEndian>(buf.len() as u32 + 4); // 4 is the length of the size correlation id.
@@ -106,6 +110,15 @@ fn opt_string_to_bytes(msg: &Option<String>, out: &mut BytesMut) {
     }
 }
 
+fn opt_vec_to_bytes(msg: &Option<Vec<u8>>, out: &mut BytesMut) {
+    match msg {
+        &None    => out.put_u32::<BigEndian>(0),
+        &Some(ref a) => {
+            out.put_u32::<BigEndian>(a.len() as u32);
+            out.put(a);
+        }
+    }
+}
 fn metadata_to_bytes(msg: &ClusterMetadata, out: &mut BytesMut) {
     out.put_u32::<BigEndian>(msg.brokers.len() as u32);
     for ref b in &msg.brokers {
@@ -232,11 +245,35 @@ fn coordinator_to_bytes(out: &mut BytesMut) {
     
 }
 
-fn join_group_to_bytes(protocol: &Option<String>, out: &mut BytesMut) {
+fn join_group_to_bytes(protocol: &Option<(String, Option<Vec<u8>>)>, out: &mut BytesMut) {
     out.put_u16::<BigEndian>(0); // error_code
     out.put_u32::<BigEndian>(0); // generation_id
-    opt_string_to_bytes(protocol, out);   // group_protocol
+    match protocol {
+        &Some((ref s, _)) => string_to_bytes(s, out),
+        &None             => out.put_i16::<BigEndian>(-1)
+    }
     string_to_bytes(&String::from(""), out);   // leader_id
     string_to_bytes(&String::from(""), out);   // member_id
-    out.put_u32::<BigEndian>(0); // members count
+    // members
+    match protocol {
+        &Some((ref s, ref a)) => {
+            out.put_u32::<BigEndian>(1);
+            string_to_bytes(s, out);   // member_id
+            opt_vec_to_bytes(a, out);  // metadata
+        },
+        &None => out.put_u32::<BigEndian>(0)
+    }
+
+}
+
+fn sync_group_to_bytes(assignment: &Option<Vec<u8>>, out: &mut BytesMut) {
+    out.put_u16::<BigEndian>(0); // error_code
+    info!("Assignment {:?}", assignment);
+    match assignment {
+        &None => out.put_u32::<BigEndian>(0),
+        &Some(ref a) => {
+            out.put_u32::<BigEndian>(a.len() as u32);
+            out.put(a);
+        }
+    }
 }

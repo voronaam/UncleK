@@ -17,7 +17,12 @@ pub enum ApiRequest {
         group_id: String,
         member_id: String,
         protocol_type: String,
-        protocols: Vec<String>
+        protocols: Vec<(String, Option<Vec<u8>>)>
+    },
+    SyncGroup {
+        group_id: String,
+        member_id: String,
+        assignments: Vec<Option<Vec<u8>>>
     }
 }
 
@@ -162,8 +167,8 @@ fn join_group(header:KafkaRequestHeader, input:&[u8]) -> IResult<&[u8], KafkaReq
       protocol_type:        map!(length_bytes!(be_u16), kafka_string) >>
       protocols:            length_count!(be_u32, do_parse!(
           name:               map!(length_bytes!(be_u16), kafka_string) >>
-                              length_bytes!(be_u32) >>
-                              (name)
+          metadata:           opt_kafka_bytes >>
+                              ((name, metadata))
                             )) >>
     (
       KafkaRequest {
@@ -179,6 +184,28 @@ fn join_group(header:KafkaRequestHeader, input:&[u8]) -> IResult<&[u8], KafkaReq
    )
 }
 
+fn sync_group(header:KafkaRequestHeader, input:&[u8]) -> IResult<&[u8], KafkaRequest> {
+    do_parse!(input,
+      group_id:             map!(length_bytes!(be_u16), kafka_string) >>
+      /*generation_id*/     be_u32 >>
+      member_id:            map!(length_bytes!(be_u16), kafka_string) >>
+      assignments:          length_count!(be_u32, do_parse!(
+                              map!(length_bytes!(be_u16), kafka_string) >>
+          assignment:         opt_kafka_bytes >>
+                              (assignment)
+                            )) >>
+    (
+      KafkaRequest {
+        header: header,
+        req: ApiRequest::SyncGroup {
+            group_id: group_id,
+            member_id: member_id,
+            assignments: assignments
+        }
+      }
+    )
+   )
+}
 
 pub fn kafka_request(input:&[u8]) -> IResult<&[u8], KafkaRequest> {
     if let IResult::Done(tail, req) = request_header(input) {
@@ -187,6 +214,7 @@ pub fn kafka_request(input:&[u8]) -> IResult<&[u8], KafkaRequest> {
            KafkaRequestHeader {opcode: 3, .. } => metadata(req, tail),
            KafkaRequestHeader {opcode:10, .. } => IResult::Done(input, KafkaRequest{header: req, req: ApiRequest::FindGroupCoordinator}),
            KafkaRequestHeader {opcode:11, .. } => join_group(req, tail),
+           KafkaRequestHeader {opcode:14, .. } => sync_group(req, tail),
            KafkaRequestHeader {opcode:18, .. } => versions(req, tail),
            _ => {
                warn!("Not yet implemented request {:?}", req);
