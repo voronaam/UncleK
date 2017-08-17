@@ -10,6 +10,7 @@ pub fn handle_request(req: KafkaRequest, db: Pool<r2d2_postgres::PostgresConnect
         ApiRequest::Publish { topics, .. } => handle_publish(&req.header, &topics, &db),
         ApiRequest::Versions => handle_versions(&req),
         ApiRequest::FindGroupCoordinator => handle_find_coordinator(&req),
+        ApiRequest::JoinGroup { protocols, .. } => handle_join_group(&req.header, &protocols),
         _ => handle_unknown(&req)
     }
 }
@@ -64,5 +65,15 @@ fn handle_find_coordinator(req: &KafkaRequest) -> KafkaResponse {
     KafkaResponse {
         header: KafkaResponseHeader::new(req.header.correlation_id),
         req: ApiResponse::GroupCoordinatorResponse
+    }
+}
+
+fn handle_join_group(header: &KafkaRequestHeader, protocols: &Vec<String>) -> KafkaResponse {
+    let selected = protocols.get(0).map(|s| s.to_string());
+    KafkaResponse {
+        header: KafkaResponseHeader::new(header.correlation_id),
+        req: ApiResponse::JoinGroupResponse {
+            protocol: selected
+        }
     }
 }

@@ -12,7 +12,13 @@ pub enum ApiRequest {
     Metadata {
         topics: Vec<String>
     },
-    FindGroupCoordinator
+    FindGroupCoordinator,
+    JoinGroup {
+        group_id: String,
+        member_id: String,
+        protocol_type: String,
+        protocols: Vec<String>
+    }
 }
 
 #[derive(Debug)]
@@ -71,13 +77,13 @@ fn request_header(input:&[u8]) -> IResult<&[u8], KafkaRequestHeader> {
     opcode: be_i16 >>
     version: be_i16 >>
     correlation_id: be_i32 >>
-    client_id: length_bytes!(be_u16) >>  // TODO length -1 indicates null.
+    client_id: opt_kafka_string >>
    (
      KafkaRequestHeader {
         opcode: opcode,
         version: version,
         correlation_id: correlation_id,
-        client_id: kafka_string(client_id)
+        client_id: client_id.unwrap()
      }
    )
   )
@@ -147,12 +153,40 @@ named!(publish_topic<&[u8], KafkaMessageSet>, do_parse!(
     )
 ));
 
+fn join_group(header:KafkaRequestHeader, input:&[u8]) -> IResult<&[u8], KafkaRequest> {
+    do_parse!(input,
+      group_id:             map!(length_bytes!(be_u16), kafka_string) >>
+      /*session_timeout*/   be_u32 >>
+      /*rebalance_timeout*/ be_u32 >>
+      member_id:            map!(length_bytes!(be_u16), kafka_string) >>
+      protocol_type:        map!(length_bytes!(be_u16), kafka_string) >>
+      protocols:            length_count!(be_u32, do_parse!(
+          name:               map!(length_bytes!(be_u16), kafka_string) >>
+                              length_bytes!(be_u32) >>
+                              (name)
+                            )) >>
+    (
+      KafkaRequest {
+        header: header,
+        req: ApiRequest::JoinGroup {
+            group_id: group_id,
+            member_id: member_id,
+            protocol_type: protocol_type,
+            protocols: protocols
+        }
+      }
+    )
+   )
+}
+
+
 pub fn kafka_request(input:&[u8]) -> IResult<&[u8], KafkaRequest> {
     if let IResult::Done(tail, req) = request_header(input) {
         match req {
            KafkaRequestHeader {opcode: 0, version: 2, .. } => publish(req, tail),
            KafkaRequestHeader {opcode: 3, .. } => metadata(req, tail),
            KafkaRequestHeader {opcode:10, .. } => IResult::Done(input, KafkaRequest{header: req, req: ApiRequest::FindGroupCoordinator}),
+           KafkaRequestHeader {opcode:11, .. } => join_group(req, tail),
            KafkaRequestHeader {opcode:18, .. } => versions(req, tail),
            _ => {
                warn!("Not yet implemented request {:?}", req);

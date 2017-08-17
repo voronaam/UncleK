@@ -14,7 +14,10 @@ pub enum ApiResponse {
         version: i16,
         responses: Vec<(String, Vec<u32>)>
     },
-    GroupCoordinatorResponse
+    GroupCoordinatorResponse,
+    JoinGroupResponse {
+        protocol: Option<String>
+    }
 }
 
 #[derive(Debug)]
@@ -42,6 +45,7 @@ pub fn to_bytes(msg: &KafkaResponse, out: &mut BytesMut) {
     match msg.req {
         ApiResponse::VersionsResponse => versions_to_bytes(&mut buf),
         ApiResponse::GroupCoordinatorResponse => coordinator_to_bytes(&mut buf),
+        ApiResponse::JoinGroupResponse {ref protocol} => join_group_to_bytes(protocol, &mut buf),
         ApiResponse::MetadataResponse { version: 2, ref cluster } => metadata_to_bytes(cluster, &mut buf),
         ApiResponse::PublishResponse { version: 2, ref responses } => publish_to_bytes(responses, &mut buf),
         _ => error_to_bytes(&mut buf)
@@ -93,6 +97,13 @@ fn string_to_bytes(msg: &String, out: &mut BytesMut) {
     let b = msg.as_bytes();
     out.put_u16::<BigEndian>(b.len() as u16);
     out.put(b);
+}
+
+fn opt_string_to_bytes(msg: &Option<String>, out: &mut BytesMut) {
+    match msg {
+        &Some(ref s) => string_to_bytes(s, out),
+        &None    => out.put_i16::<BigEndian>(-1)
+    }
 }
 
 fn metadata_to_bytes(msg: &ClusterMetadata, out: &mut BytesMut) {
@@ -219,4 +230,13 @@ fn coordinator_to_bytes(out: &mut BytesMut) {
     string_to_bytes(&get_hostname().expect("Failed to get localhost's hostname"), out);
     out.put_u32::<BigEndian>(9092); // port
     
+}
+
+fn join_group_to_bytes(protocol: &Option<String>, out: &mut BytesMut) {
+    out.put_u16::<BigEndian>(0); // error_code
+    out.put_u32::<BigEndian>(0); // generation_id
+    opt_string_to_bytes(protocol, out);   // group_protocol
+    string_to_bytes(&String::from(""), out);   // leader_id
+    string_to_bytes(&String::from(""), out);   // member_id
+    out.put_u32::<BigEndian>(0); // members count
 }
