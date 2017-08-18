@@ -4,7 +4,7 @@ This project is an alternative implementation of a server working on the Apache 
 
 ## The goal and motivation
 
-The idea of even sourcing behind Apache Kafka is very interesting and has many applications. However, the implementaion side is not impressive. It has been written by people far removed from the Software Engineering and is suffering from many problems. I am not listing them here, but they are grave enough to not be fixable by some pull requests to the main project.
+The idea of event sourcing behind Apache Kafka is very interesting and has many applications. However, the implementaion side is not impressive. It has been written by people far removed from the Software Engineering and is suffering from many problems. I am not listing them here, but they are grave enough to not be fixable by some pull requests to the main project.
 
 The goal is to provide a scalable alternative to Apache Kafka.
 
