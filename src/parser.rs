@@ -26,7 +26,10 @@ pub enum ApiRequest {
     },
     FetchOffsets {
         group_id: String,
-        topics: Vec<(String, Vec<u32>)>
+        topics: Vec<TopicWithPartitions>
+    },
+    Offsets {
+        topics: Vec<TopicWithPartitions>
     }
 }
 
@@ -57,6 +60,20 @@ pub struct KafkaMessage {
     timestamp: u64,
     pub key: Option<Vec<u8> >,
     pub value: Option<Vec<u8> >
+}
+
+#[derive(Debug, Clone)]
+pub struct TopicWithPartitions {
+    pub name: String,
+    pub partitions: Vec<u32>
+}
+impl TopicWithPartitions {
+    pub fn new(name: String, partitions: Vec<u32>) -> TopicWithPartitions {
+        TopicWithPartitions {
+            name: name,
+            partitions: partitions
+        }
+    }
 }
 
 pub fn size_header(input: &[u8]) -> IResult<&[u8], &[u8]> {
@@ -217,7 +234,7 @@ fn fetch_offset(header:KafkaRequestHeader, input:&[u8]) -> IResult<&[u8], KafkaR
       topics:               length_count!(be_u32, do_parse!(
           topic:              map!(length_bytes!(be_u16), kafka_string) >>
           partitions:         length_count!(be_u32, be_u32) >>
-                              ((topic, partitions))
+                              (TopicWithPartitions::new(topic, partitions))
                             )) >>
     (
       KafkaRequest {
@@ -231,11 +248,35 @@ fn fetch_offset(header:KafkaRequestHeader, input:&[u8]) -> IResult<&[u8], KafkaR
    )
 }
 
+fn offsets(header:KafkaRequestHeader, input:&[u8]) -> IResult<&[u8], KafkaRequest> {
+    do_parse!(input,
+      /* replica_id */      be_u32 >>
+      topics:               length_count!(be_u32, do_parse!(
+        topic:                map!(length_bytes!(be_u16), kafka_string) >>
+        partitions:           length_count!(be_u32, do_parse!(
+          partition:            be_u32 >>
+          /*timestamp*/         be_u64 >>
+                                (partition)
+                              )) >>
+                              (TopicWithPartitions::new(topic, partitions))
+                            )) >>
+    (
+      KafkaRequest {
+        header: header,
+        req: ApiRequest::Offsets {
+            topics: topics
+        }
+      }
+    )
+   )
+}
+
 
 pub fn kafka_request(input:&[u8]) -> IResult<&[u8], KafkaRequest> {
     if let IResult::Done(tail, req) = request_header(input) {
         match req {
            KafkaRequestHeader {opcode: 0, version: 2, .. } => publish(req, tail),
+           KafkaRequestHeader {opcode: 2, version: 1, .. } => offsets(req, tail),
            KafkaRequestHeader {opcode: 3, .. } => metadata(req, tail),
            KafkaRequestHeader {opcode: 9, .. } => fetch_offset(req, tail),
            KafkaRequestHeader {opcode:10, .. } => IResult::Done(input, KafkaRequest{header: req, req: ApiRequest::FindGroupCoordinator}),

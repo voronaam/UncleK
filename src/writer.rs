@@ -1,5 +1,6 @@
 use bytes::{BytesMut, BufMut, BigEndian};
 use hostname::get_hostname;
+use parser::TopicWithPartitions; // TODO move to common place
 
 // Anything that is a Kafka response body.
 #[derive(Debug)]
@@ -22,8 +23,12 @@ pub enum ApiResponse {
         assignment: Option<Vec<u8>>
     },
     FetchOffsetsResponse {
-        topics: Vec<(String, Vec<u32>)>
+        topics: Vec<TopicWithPartitions>
+    },
+    OffsetsResponse {
+        topics: Vec<TopicWithPartitions>
     }
+
 }
 
 #[derive(Debug)]
@@ -56,6 +61,7 @@ pub fn to_bytes(msg: &KafkaResponse, out: &mut BytesMut) {
         ApiResponse::PublishResponse { version: 2, ref responses } => publish_to_bytes(responses, &mut buf),
         ApiResponse::SyncGroupResponse { ref assignment } => sync_group_to_bytes(assignment, &mut buf),
         ApiResponse::FetchOffsetsResponse { ref topics } => fetch_offsets_to_bytes(topics, &mut buf),
+        ApiResponse::OffsetsResponse { ref topics } => offsets_to_bytes(topics, &mut buf),
         _ => error_to_bytes(&mut buf)
     }
     out.put_u32::<BigEndian>(buf.len() as u32 + 4); // 4 is the length of the size correlation id.
@@ -281,12 +287,12 @@ fn sync_group_to_bytes(assignment: &Option<Vec<u8>>, out: &mut BytesMut) {
     }
 }
 
-fn fetch_offsets_to_bytes(topics: &Vec<(String, Vec<u32>)>, out: &mut BytesMut) {
+fn fetch_offsets_to_bytes(topics: &Vec<TopicWithPartitions>, out: &mut BytesMut) {
     out.put_u32::<BigEndian>(topics.len() as u32);
     for topic in topics {
-        string_to_bytes(&topic.0, out);
-        out.put_u32::<BigEndian>(topic.1.len() as u32);
-        for p in &topic.1 {
+        string_to_bytes(&topic.name, out);
+        out.put_u32::<BigEndian>(topic.partitions.len() as u32);
+        for p in &topic.partitions {
             out.put_u32::<BigEndian>(*p); // partition
             out.put_i64::<BigEndian>(-1); // offset
             opt_string_to_bytes(&None, out);
@@ -294,4 +300,18 @@ fn fetch_offsets_to_bytes(topics: &Vec<(String, Vec<u32>)>, out: &mut BytesMut) 
         }
     }
     out.put_u16::<BigEndian>(0); // error_code
+}
+
+fn offsets_to_bytes(topics: &Vec<TopicWithPartitions>, out: &mut BytesMut) {
+    out.put_u32::<BigEndian>(topics.len() as u32);
+    for topic in topics {
+        string_to_bytes(&topic.name, out);
+        out.put_u32::<BigEndian>(topic.partitions.len() as u32);
+        for p in &topic.partitions {
+            out.put_u32::<BigEndian>(*p); // partition
+            out.put_u16::<BigEndian>(0); // error_code
+            out.put_u64::<BigEndian>(0); // timestamp
+            out.put_i64::<BigEndian>(0); // offset
+        }
+    }
 }
