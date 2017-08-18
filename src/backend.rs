@@ -14,6 +14,7 @@ pub fn handle_request(req: KafkaRequest, db: Pool<r2d2_postgres::PostgresConnect
         ApiRequest::SyncGroup { assignments, .. } => handle_sync_group(&req.header, &assignments),
         ApiRequest::FetchOffsets { topics, .. } => handle_fetch_offsets(&req.header, &topics),
         ApiRequest::Offsets { topics } => handle_offsets(&req.header, &topics),
+        ApiRequest::OffsetCommit { topics } => handle_offset_commit(&req.header, &topics),
         _ => handle_unknown(&req)
     }
 }
@@ -104,6 +105,15 @@ fn handle_offsets(header: &KafkaRequestHeader, topics: &Vec<TopicWithPartitions>
     KafkaResponse {
         header: KafkaResponseHeader::new(header.correlation_id),
         req: ApiResponse::OffsetsResponse {
+            topics: topics.to_vec()
+        }
+    }
+}
+
+fn handle_offset_commit(header: &KafkaRequestHeader, topics: &Vec<TopicWithPartitions>) -> KafkaResponse {
+    KafkaResponse {
+        header: KafkaResponseHeader::new(header.correlation_id),
+        req: ApiResponse::OffsetCommitResponse {
             topics: topics.to_vec()
         }
     }

@@ -27,8 +27,10 @@ pub enum ApiResponse {
     },
     OffsetsResponse {
         topics: Vec<TopicWithPartitions>
-    }
-
+    },
+    OffsetCommitResponse {
+        topics: Vec<TopicWithPartitions>
+    },
 }
 
 #[derive(Debug)]
@@ -62,6 +64,7 @@ pub fn to_bytes(msg: &KafkaResponse, out: &mut BytesMut) {
         ApiResponse::SyncGroupResponse { ref assignment } => sync_group_to_bytes(assignment, &mut buf),
         ApiResponse::FetchOffsetsResponse { ref topics } => fetch_offsets_to_bytes(topics, &mut buf),
         ApiResponse::OffsetsResponse { ref topics } => offsets_to_bytes(topics, &mut buf),
+        ApiResponse::OffsetCommitResponse { ref topics } => offset_commit_to_bytes(topics, &mut buf),
         _ => error_to_bytes(&mut buf)
     }
     out.put_u32::<BigEndian>(buf.len() as u32 + 4); // 4 is the length of the size correlation id.
@@ -312,6 +315,18 @@ fn offsets_to_bytes(topics: &Vec<TopicWithPartitions>, out: &mut BytesMut) {
             out.put_u16::<BigEndian>(0); // error_code
             out.put_u64::<BigEndian>(0); // timestamp
             out.put_i64::<BigEndian>(0); // offset
+        }
+    }
+}
+
+fn offset_commit_to_bytes(topics: &Vec<TopicWithPartitions>, out: &mut BytesMut) {
+    out.put_u32::<BigEndian>(topics.len() as u32);
+    for topic in topics {
+        string_to_bytes(&topic.name, out);
+        out.put_u32::<BigEndian>(topic.partitions.len() as u32);
+        for p in &topic.partitions {
+            out.put_u32::<BigEndian>(*p); // partition
+            out.put_u16::<BigEndian>(0); // error_code
         }
     }
 }
