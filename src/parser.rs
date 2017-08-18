@@ -35,6 +35,7 @@ pub enum ApiRequest {
         topics: Vec<TopicWithPartitions>
     },
     Heartbeat,
+    Unknown,
 }
 
 #[derive(Debug)]
@@ -318,7 +319,8 @@ pub fn kafka_request(input:&[u8]) -> IResult<&[u8], KafkaRequest> {
            KafkaRequestHeader {opcode:18, .. } => versions(req, tail),
            _ => {
                warn!("Not yet implemented request {:?}", req);
-               IResult::Error(error_code!(ErrorKind::Custom(1)))
+               IResult::Done(input, KafkaRequest{header: req, req: ApiRequest::Unknown})
+               // IResult::Error(error_code!(ErrorKind::Custom(1)))
            }
         }
     } else {
