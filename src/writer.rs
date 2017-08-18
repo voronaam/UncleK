@@ -31,6 +31,7 @@ pub enum ApiResponse {
     OffsetCommitResponse {
         topics: Vec<TopicWithPartitions>
     },
+    HeartbeatResponse,
 }
 
 #[derive(Debug)]
@@ -65,6 +66,7 @@ pub fn to_bytes(msg: &KafkaResponse, out: &mut BytesMut) {
         ApiResponse::FetchOffsetsResponse { ref topics } => fetch_offsets_to_bytes(topics, &mut buf),
         ApiResponse::OffsetsResponse { ref topics } => offsets_to_bytes(topics, &mut buf),
         ApiResponse::OffsetCommitResponse { ref topics } => offset_commit_to_bytes(topics, &mut buf),
+        ApiResponse::HeartbeatResponse => heartbeat_to_bytes(&mut buf),
         _ => error_to_bytes(&mut buf)
     }
     out.put_u32::<BigEndian>(buf.len() as u32 + 4); // 4 is the length of the size correlation id.
@@ -329,4 +331,8 @@ fn offset_commit_to_bytes(topics: &Vec<TopicWithPartitions>, out: &mut BytesMut)
             out.put_u16::<BigEndian>(0); // error_code
         }
     }
+}
+
+fn heartbeat_to_bytes(out: &mut BytesMut) {
+    out.put_u16::<BigEndian>(0); // error_code
 }

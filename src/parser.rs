@@ -34,6 +34,7 @@ pub enum ApiRequest {
     OffsetCommit {
         topics: Vec<TopicWithPartitions>
     },
+    Heartbeat,
 }
 
 #[derive(Debug)]
@@ -312,6 +313,7 @@ pub fn kafka_request(input:&[u8]) -> IResult<&[u8], KafkaRequest> {
            KafkaRequestHeader {opcode: 9, .. } => fetch_offset(req, tail),
            KafkaRequestHeader {opcode:10, .. } => IResult::Done(input, KafkaRequest{header: req, req: ApiRequest::FindGroupCoordinator}),
            KafkaRequestHeader {opcode:11, .. } => join_group(req, tail),
+           KafkaRequestHeader {opcode:12, .. } => IResult::Done(input, KafkaRequest{header: req, req: ApiRequest::Heartbeat}),
            KafkaRequestHeader {opcode:14, .. } => sync_group(req, tail),
            KafkaRequestHeader {opcode:18, .. } => versions(req, tail),
            _ => {

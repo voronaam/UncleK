@@ -15,6 +15,7 @@ pub fn handle_request(req: KafkaRequest, db: Pool<r2d2_postgres::PostgresConnect
         ApiRequest::FetchOffsets { topics, .. } => handle_fetch_offsets(&req.header, &topics),
         ApiRequest::Offsets { topics } => handle_offsets(&req.header, &topics),
         ApiRequest::OffsetCommit { topics } => handle_offset_commit(&req.header, &topics),
+        ApiRequest::Heartbeat => handle_heartbeat(&req),
         _ => handle_unknown(&req)
     }
 }
@@ -116,5 +117,12 @@ fn handle_offset_commit(header: &KafkaRequestHeader, topics: &Vec<TopicWithParti
         req: ApiResponse::OffsetCommitResponse {
             topics: topics.to_vec()
         }
+    }
+}
+
+fn handle_heartbeat(req: &KafkaRequest) -> KafkaResponse {
+    KafkaResponse {
+        header: KafkaResponseHeader::new(req.header.correlation_id),
+        req: ApiResponse::HeartbeatResponse
     }
 }
