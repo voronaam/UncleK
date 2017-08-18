@@ -24,7 +24,7 @@ Rust is a powerful language, but it is very low level and helps me to avoid many
 
 * Do you see any practical use case for Uncle K.?
 
-Sure. IoT (Internet of Things) is coming and those things will produce a lot of events. And they are not going to have gigbytes of RAM. At least not right away. But Apache Kafka is huge and recommended RAM is in the range of tens of gigabytes (64Gb, actually). Uncle K. is a 5Mb executable (statically linked release build) which runs in under 100Kb of RAM (when under load). Of course the current implementation needs PostgreSQL server as well. But an empty and idle PostgreSQL is well under 1Mb RAM as well.
+Sure. IoT (Internet of Things) is coming and those things will produce a lot of events. And they are not going to have gigbytes of RAM. At least not right away. But Apache Kafka is huge and recommended RAM is in the range of tens of gigabytes (64Gb, actually). Uncle K. is a 5Mb executable (statically linked release build) which runs in under 100mb of RAM (when under load). Of course the current implementation needs PostgreSQL server as well. You should take that into account.
 
 * Talk is cheap, show me the code
 
