@@ -309,14 +309,14 @@ pub fn kafka_request(input:&[u8]) -> IResult<&[u8], KafkaRequest> {
         match req {
            KafkaRequestHeader {opcode: 0, version: 2, .. } => publish(req, tail),
            KafkaRequestHeader {opcode: 2, version: 1, .. } => offsets(req, tail),
-           KafkaRequestHeader {opcode: 3, .. } => metadata(req, tail),
-           KafkaRequestHeader {opcode: 8, .. } => offset_commit(req, tail),
+           KafkaRequestHeader {opcode: 3, version: 2, .. } => metadata(req, tail),
+           KafkaRequestHeader {opcode: 8, version: 2, .. } => offset_commit(req, tail),
            KafkaRequestHeader {opcode: 9, .. } => fetch_offset(req, tail),
-           KafkaRequestHeader {opcode:10, .. } => IResult::Done(input, KafkaRequest{header: req, req: ApiRequest::FindGroupCoordinator}),
-           KafkaRequestHeader {opcode:11, .. } => join_group(req, tail),
-           KafkaRequestHeader {opcode:12, .. } => IResult::Done(input, KafkaRequest{header: req, req: ApiRequest::Heartbeat}),
-           KafkaRequestHeader {opcode:14, .. } => sync_group(req, tail),
-           KafkaRequestHeader {opcode:18, .. } => versions(req, tail),
+           KafkaRequestHeader {opcode:10, version: 0, .. } => IResult::Done(input, KafkaRequest{header: req, req: ApiRequest::FindGroupCoordinator}),
+           KafkaRequestHeader {opcode:11, version: 1, .. } => join_group(req, tail),
+           KafkaRequestHeader {opcode:12, version: 0, .. } => IResult::Done(input, KafkaRequest{header: req, req: ApiRequest::Heartbeat}),
+           KafkaRequestHeader {opcode:14, version: 0, .. } => sync_group(req, tail),
+           KafkaRequestHeader {opcode:18, version: 0, .. } => versions(req, tail),
            _ => {
                warn!("Not yet implemented request {:?}", req);
                IResult::Done(input, KafkaRequest{header: req, req: ApiRequest::Unknown})
