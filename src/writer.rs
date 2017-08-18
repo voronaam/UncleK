@@ -268,7 +268,6 @@ fn join_group_to_bytes(protocol: &Option<(String, Option<Vec<u8>>)>, out: &mut B
 
 fn sync_group_to_bytes(assignment: &Option<Vec<u8>>, out: &mut BytesMut) {
     out.put_u16::<BigEndian>(0); // error_code
-    info!("Assignment {:?}", assignment);
     match assignment {
         &None => out.put_u32::<BigEndian>(0),
         &Some(ref a) => {

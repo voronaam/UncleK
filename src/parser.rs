@@ -23,6 +23,10 @@ pub enum ApiRequest {
         group_id: String,
         member_id: String,
         assignments: Vec<Option<Vec<u8>>>
+    },
+    FetchOffsets {
+        group_id: String,
+        topics: Vec<(String, Vec<u32>)>
     }
 }
 
@@ -207,11 +211,33 @@ fn sync_group(header:KafkaRequestHeader, input:&[u8]) -> IResult<&[u8], KafkaReq
    )
 }
 
+fn fetch_offset(header:KafkaRequestHeader, input:&[u8]) -> IResult<&[u8], KafkaRequest> {
+    do_parse!(input,
+      group_id:             map!(length_bytes!(be_u16), kafka_string) >>
+      topics:               length_count!(be_u32, do_parse!(
+          topic:              map!(length_bytes!(be_u16), kafka_string) >>
+          partitions:         length_count!(be_u32, be_u32) >>
+                              ((topic, partitions))
+                            )) >>
+    (
+      KafkaRequest {
+        header: header,
+        req: ApiRequest::FetchOffsets {
+            group_id: group_id,
+            topics: topics
+        }
+      }
+    )
+   )
+}
+
+
 pub fn kafka_request(input:&[u8]) -> IResult<&[u8], KafkaRequest> {
     if let IResult::Done(tail, req) = request_header(input) {
         match req {
            KafkaRequestHeader {opcode: 0, version: 2, .. } => publish(req, tail),
            KafkaRequestHeader {opcode: 3, .. } => metadata(req, tail),
+           KafkaRequestHeader {opcode: 9, .. } => fetch_offset(req, tail),
            KafkaRequestHeader {opcode:10, .. } => IResult::Done(input, KafkaRequest{header: req, req: ApiRequest::FindGroupCoordinator}),
            KafkaRequestHeader {opcode:11, .. } => join_group(req, tail),
            KafkaRequestHeader {opcode:14, .. } => sync_group(req, tail),
