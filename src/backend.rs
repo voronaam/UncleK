@@ -81,7 +81,7 @@ fn handle_fetch(header: &KafkaRequestHeader, topics: &Vec<(String, Vec<(u32, u64
         }
         responses.push((topic.0.to_string(), partition_responses));
     }
-    info!("About to send a fetch response with content {:?}", responses);
+    debug!("About to send a fetch response with content {:?}", responses);
     KafkaResponse {
         header: KafkaResponseHeader::new(header.correlation_id),
         req: ApiResponse::FetchResponse {

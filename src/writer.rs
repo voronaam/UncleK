@@ -378,7 +378,6 @@ fn fetch_to_bytes(msg: &Vec<(String, Vec<(u64, Option<Vec<u8>>, Vec<u8>)>)>, out
         // awesome Kafka wire format. We have to double buf it here to know the size of the RECORDS
         let mut buf = BytesMut::with_capacity(1024);
         records_to_bytes(&topic.1, &mut buf);
-        info!("buf len {}", buf.len());
         out.put_u32::<BigEndian>(buf.len() as u32);
         out.extend(buf.take());
     }
