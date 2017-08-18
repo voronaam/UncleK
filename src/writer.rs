@@ -1,5 +1,6 @@
 use bytes::{BytesMut, BufMut, BigEndian};
 use hostname::get_hostname;
+use crc::crc32;
 use parser::TopicWithPartitions; // TODO move to common place
 
 // Anything that is a Kafka response body.
@@ -14,6 +15,10 @@ pub enum ApiResponse {
     PublishResponse {
         version: i16,
         responses: Vec<(String, Vec<u32>)>
+    },
+    FetchResponse {
+        version: i16,
+        responses: Vec<(String, Vec<(u64, Option<Vec<u8>>, Vec<u8>)>)>
     },
     GroupCoordinatorResponse,
     JoinGroupResponse {
@@ -62,6 +67,7 @@ pub fn to_bytes(msg: &KafkaResponse, out: &mut BytesMut) {
         ApiResponse::JoinGroupResponse {ref protocol} => join_group_to_bytes(protocol, &mut buf),
         ApiResponse::MetadataResponse { version: 2, ref cluster } => metadata_to_bytes(cluster, &mut buf),
         ApiResponse::PublishResponse { version: 2, ref responses } => publish_to_bytes(responses, &mut buf),
+        ApiResponse::FetchResponse { version: 3, ref responses } => fetch_to_bytes(responses, &mut buf),
         ApiResponse::SyncGroupResponse { ref assignment } => sync_group_to_bytes(assignment, &mut buf),
         ApiResponse::FetchOffsetsResponse { ref topics } => fetch_offsets_to_bytes(topics, &mut buf),
         ApiResponse::OffsetsResponse { ref topics } => offsets_to_bytes(topics, &mut buf),
@@ -335,4 +341,45 @@ fn offset_commit_to_bytes(topics: &Vec<TopicWithPartitions>, out: &mut BytesMut)
 
 fn heartbeat_to_bytes(out: &mut BytesMut) {
     out.put_u16::<BigEndian>(0); // error_code
+}
+
+fn opt_size(value: &Option<Vec<u8>>) -> usize {
+    match value {
+        &None => 0,
+        &Some(ref a) => a.len()
+    }
+}
+
+fn records_to_bytes(records: &Vec<(u64, Option<Vec<u8>>, Vec<u8>)>, out: &mut BytesMut) {
+    for r in records {
+        out.put_u64::<BigEndian>(r.0);
+        out.put_u32::<BigEndian>((22 + opt_size(&r.1) + r.2.len()) as u32);
+        let mut buf = BytesMut::with_capacity(18 + opt_size(&r.1) + r.2.len());
+        buf.put_u8(01);  // magic
+        buf.put_u8(00);  // attributes
+        buf.put_u64::<BigEndian>(0); // timestamp
+        opt_vec_to_bytes(&r.1, &mut buf); // key
+        buf.put_u32::<BigEndian>(r.2.len() as u32); // value len
+        buf.put(&r.2); // value
+        out.put_u32::<BigEndian>(crc32::checksum_ieee(&buf[..])); // crc32
+        out.extend(buf.take());
+    }
+}
+
+fn fetch_to_bytes(msg: &Vec<(String, Vec<(u64, Option<Vec<u8>>, Vec<u8>)>)>, out: &mut BytesMut) {
+    out.put_u32::<BigEndian>(0); // throttle 
+    out.put_u32::<BigEndian>(msg.len() as u32);
+    for topic in msg {
+        string_to_bytes(&topic.0, out);
+        out.put_u32::<BigEndian>(1u32); // only one zero partition in the response
+        out.put_u32::<BigEndian>(0); // partition. Always zero for now :)
+        out.put_u16::<BigEndian>(0); // error code
+        out.put_u64::<BigEndian>(0); // high watermark
+        // awesome Kafka wire format. We have to double buf it here to know the size of the RECORDS
+        let mut buf = BytesMut::with_capacity(1024);
+        records_to_bytes(&topic.1, &mut buf);
+        info!("buf len {}", buf.len());
+        out.put_u32::<BigEndian>(buf.len() as u32);
+        out.extend(buf.take());
+    }
 }

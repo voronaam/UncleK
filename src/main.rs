@@ -16,6 +16,7 @@ extern crate pretty_env_logger;
 extern crate log;
 
 extern crate hostname;
+extern crate crc;
 
 use std::io;
 use std::str;

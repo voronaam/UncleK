@@ -36,6 +36,9 @@ pub enum ApiRequest {
     },
     Heartbeat,
     Unknown,
+    Fetch {
+        topics: Vec<(String, Vec<(u32, u64)>)>
+    },
 }
 
 #[derive(Debug)]
@@ -303,15 +306,43 @@ fn offset_commit(header:KafkaRequestHeader, input:&[u8]) -> IResult<&[u8], Kafka
    )
 }
 
+fn fetch(header:KafkaRequestHeader, input:&[u8]) -> IResult<&[u8], KafkaRequest> {
+    do_parse!(input,
+      /*replica_id*/        be_u32 >>
+      /*max wait*/          be_u32 >>
+      /*min bytes*/         be_u32 >>
+      /*max bytes*/         be_u32 >>
+      topics:               length_count!(be_u32, do_parse!(
+        topic:                map!(length_bytes!(be_u16), kafka_string) >>
+        partitions:           length_count!(be_u32, do_parse!(
+          partition:            be_u32 >>
+          offset:               be_u64 >>
+          /*max bytes*/         be_u32 >>
+                                ((partition, offset))
+                              )) >>
+                              ((topic, partitions))
+                            )) >>
+    (
+      KafkaRequest {
+        header: header,
+        req: ApiRequest::Fetch {
+            topics: topics
+        }
+      }
+    )
+   )
+}
+
 
 pub fn kafka_request(input:&[u8]) -> IResult<&[u8], KafkaRequest> {
     if let IResult::Done(tail, req) = request_header(input) {
         match req {
            KafkaRequestHeader {opcode: 0, version: 2, .. } => publish(req, tail),
+           KafkaRequestHeader {opcode: 1, version: 3, .. } => fetch(req, tail),
            KafkaRequestHeader {opcode: 2, version: 1, .. } => offsets(req, tail),
            KafkaRequestHeader {opcode: 3, version: 2, .. } => metadata(req, tail),
            KafkaRequestHeader {opcode: 8, version: 2, .. } => offset_commit(req, tail),
-           KafkaRequestHeader {opcode: 9, .. } => fetch_offset(req, tail),
+           KafkaRequestHeader {opcode: 9, .. }             => fetch_offset(req, tail),
            KafkaRequestHeader {opcode:10, version: 0, .. } => IResult::Done(input, KafkaRequest{header: req, req: ApiRequest::FindGroupCoordinator}),
            KafkaRequestHeader {opcode:11, version: 1, .. } => join_group(req, tail),
            KafkaRequestHeader {opcode:12, version: 0, .. } => IResult::Done(input, KafkaRequest{header: req, req: ApiRequest::Heartbeat}),

@@ -8,6 +8,7 @@ pub fn handle_request(req: KafkaRequest, db: Pool<r2d2_postgres::PostgresConnect
     match req.req {
         ApiRequest::Metadata { topics } => handle_metadata(&req.header, &topics),
         ApiRequest::Publish { topics, .. } => handle_publish(&req.header, &topics, &db),
+        ApiRequest::Fetch { topics } => handle_fetch(&req.header, &topics, &db),
         ApiRequest::Versions => handle_versions(&req),
         ApiRequest::FindGroupCoordinator => handle_find_coordinator(&req),
         ApiRequest::JoinGroup { protocols, .. } => handle_join_group(&req.header, &protocols),
@@ -43,14 +44,14 @@ fn handle_metadata(header: &KafkaRequestHeader, topics: &Vec<String>) -> KafkaRe
 }
 
 fn handle_publish(header: &KafkaRequestHeader, topics: &Vec<KafkaMessageSet>, db: &Pool<r2d2_postgres::PostgresConnectionManager>) -> KafkaResponse {
+    let conn = db.get().expect("Could not get a DB connection");
     let mut responses: Vec<(String, Vec<u32>)> = Vec::new();
-    for ref topic in topics {
+    for topic in topics {
         let mut partition_responses: Vec<u32> = Vec::new();
-        for ref partition in &topic.messages {
+        for partition in &topic.messages {
             info!("Actually saving message {:?}:{:?} to topic {:?} partition {:?}", partition.key, partition.value, topic.topic, partition.partition);
             
-            // CREATE TABLE test (id serial, partition int NOT NULL, key BYTEA, value BYTEA);
-            let conn = db.get().expect("Could not get a DB connection");
+            // CREATE TABLE test (id bigserial, partition int NOT NULL, key BYTEA, value BYTEA);
             conn.execute(format!("INSERT INTO {} (partition, key, value) VALUES ($1, $2, $3)", topic.topic).as_str(),
                  &[&(partition.partition as i32), &partition.key, &partition.value]).expect("Failed to insert to the DB");
             partition_responses.push(partition.partition);
@@ -60,6 +61,30 @@ fn handle_publish(header: &KafkaRequestHeader, topics: &Vec<KafkaMessageSet>, db
     KafkaResponse {
         header: KafkaResponseHeader::new(header.correlation_id),
         req: ApiResponse::PublishResponse {
+            version: header.version,
+            responses: responses
+        }
+    }
+}
+
+fn handle_fetch(header: &KafkaRequestHeader, topics: &Vec<(String, Vec<(u32, u64)>)>, db: &Pool<r2d2_postgres::PostgresConnectionManager>) -> KafkaResponse {
+    let conn = db.get().expect("Could not get a DB connection");
+    let mut responses: Vec<(String, Vec<(u64, Option<Vec<u8>>, Vec<u8>)>)> = Vec::new();
+    for topic in topics {
+        let mut partition_responses: Vec<(u64, Option<Vec<u8>>, Vec<u8>)> = Vec::new();
+        let rs = conn.query(format!("SELECT id, partition, key, value FROM {}", topic.0).as_str(), &[]).expect("DB query failed");
+        for row in &rs {
+            let offset: i64 = row.get(0);
+            let key: Option<Vec<u8>> = row.get(2);
+            let value: Vec<u8> = row.get(3);
+            partition_responses.push((offset as u64, key, value));
+        }
+        responses.push((topic.0.to_string(), partition_responses));
+    }
+    info!("About to send a fetch response with content {:?}", responses);
+    KafkaResponse {
+        header: KafkaResponseHeader::new(header.correlation_id),
+        req: ApiResponse::FetchResponse {
             version: header.version,
             responses: responses
         }
