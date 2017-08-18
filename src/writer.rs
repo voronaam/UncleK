@@ -20,6 +20,9 @@ pub enum ApiResponse {
     },
     SyncGroupResponse {
         assignment: Option<Vec<u8>>
+    },
+    FetchOffsetsResponse {
+        topics: Vec<(String, Vec<u32>)>
     }
 }
 
@@ -52,6 +55,7 @@ pub fn to_bytes(msg: &KafkaResponse, out: &mut BytesMut) {
         ApiResponse::MetadataResponse { version: 2, ref cluster } => metadata_to_bytes(cluster, &mut buf),
         ApiResponse::PublishResponse { version: 2, ref responses } => publish_to_bytes(responses, &mut buf),
         ApiResponse::SyncGroupResponse { ref assignment } => sync_group_to_bytes(assignment, &mut buf),
+        ApiResponse::FetchOffsetsResponse { ref topics } => fetch_offsets_to_bytes(topics, &mut buf),
         _ => error_to_bytes(&mut buf)
     }
     out.put_u32::<BigEndian>(buf.len() as u32 + 4); // 4 is the length of the size correlation id.
@@ -121,7 +125,7 @@ fn opt_vec_to_bytes(msg: &Option<Vec<u8>>, out: &mut BytesMut) {
 }
 fn metadata_to_bytes(msg: &ClusterMetadata, out: &mut BytesMut) {
     out.put_u32::<BigEndian>(msg.brokers.len() as u32);
-    for ref b in &msg.brokers {
+    for b in &msg.brokers {
         out.put_u32::<BigEndian>(b.node_id);
         string_to_bytes(&b.host, out);
         out.put_u32::<BigEndian>(b.port);
@@ -134,12 +138,12 @@ fn metadata_to_bytes(msg: &ClusterMetadata, out: &mut BytesMut) {
     string_to_bytes(&msg.cluster_id, out);
     out.put_u32::<BigEndian>(msg.controller_id);
     out.put_u32::<BigEndian>(msg.topics.len() as u32);
-    for ref t in &msg.topics {
+    for t in &msg.topics {
         out.put_u16::<BigEndian>(t.error_code);
         string_to_bytes(&t.name, out);
         out.put_u8(t.is_internal);
         out.put_u32::<BigEndian>(t.partitions.len() as u32);
-        for ref p in &t.partitions {
+        for p in &t.partitions {
             out.put_u16::<BigEndian>(p.error_code);
             out.put_u32::<BigEndian>(p.id);
             out.put_u32::<BigEndian>(p.leader);
@@ -204,7 +208,7 @@ impl TopicMetadata {
 
 fn publish_to_bytes(msg: &Vec<(String, Vec<u32>)>, out: &mut BytesMut) {
     out.put_u32::<BigEndian>(msg.len() as u32);
-    for ref topic in msg {
+    for topic in msg {
         string_to_bytes(&topic.0, out);
         out.put_u32::<BigEndian>(topic.1.len() as u32);
         for partition in &topic.1 {
@@ -275,4 +279,19 @@ fn sync_group_to_bytes(assignment: &Option<Vec<u8>>, out: &mut BytesMut) {
             out.put(a);
         }
     }
+}
+
+fn fetch_offsets_to_bytes(topics: &Vec<(String, Vec<u32>)>, out: &mut BytesMut) {
+    out.put_u32::<BigEndian>(topics.len() as u32);
+    for topic in topics {
+        string_to_bytes(&topic.0, out);
+        out.put_u32::<BigEndian>(topic.1.len() as u32);
+        for p in &topic.1 {
+            out.put_u32::<BigEndian>(*p); // partition
+            out.put_i64::<BigEndian>(-1); // offset
+            opt_string_to_bytes(&None, out);
+            out.put_u16::<BigEndian>(0); // error_code
+        }
+    }
+    out.put_u16::<BigEndian>(0); // error_code
 }

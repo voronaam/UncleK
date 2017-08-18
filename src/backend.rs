@@ -12,6 +12,7 @@ pub fn handle_request(req: KafkaRequest, db: Pool<r2d2_postgres::PostgresConnect
         ApiRequest::FindGroupCoordinator => handle_find_coordinator(&req),
         ApiRequest::JoinGroup { protocols, .. } => handle_join_group(&req.header, &protocols),
         ApiRequest::SyncGroup { assignments, .. } => handle_sync_group(&req.header, &assignments),
+        ApiRequest::FetchOffsets { topics, .. } => handle_fetch_offsets(&req.header, &topics),
         _ => handle_unknown(&req)
     }
 }
@@ -85,6 +86,15 @@ fn handle_sync_group(header: &KafkaRequestHeader, assignments: &Vec<Option<Vec<u
         header: KafkaResponseHeader::new(header.correlation_id),
         req: ApiResponse::SyncGroupResponse {
             assignment: selected
+        }
+    }
+}
+
+fn handle_fetch_offsets(header: &KafkaRequestHeader, topics: &Vec<(String, Vec<u32>)>) -> KafkaResponse {
+    KafkaResponse {
+        header: KafkaResponseHeader::new(header.correlation_id),
+        req: ApiResponse::FetchOffsetsResponse {
+            topics: topics.to_vec()
         }
     }
 }
