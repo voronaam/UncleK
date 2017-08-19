@@ -106,21 +106,9 @@ impl Service for KafkaService {
             debug!("Sending a request to the backend {:?}", req);
             let response = backend::handle_request(req, db);
             debug!("Response from the backend {:?}", response);
-            /*
-            let delay = if response.is_empty() {0} else {1000};
+            let delay = if response.is_empty() {1000} else {0};
             timer.sleep(Duration::from_millis(delay))
-                .map_err(|_| io::Error::new(io::ErrorKind::Other, "oh no!"))
-                .join(future::ok(response))
-                .map(|t| t.1)
-            */
-            if !response.is_empty() {
-                future::ok(response).boxed()
-            } else {
-                timer.sleep(Duration::from_millis(1000))
-                    .map(|_| response)
-                    .map_err(|_| io::Error::new(io::ErrorKind::Other, "oh no!"))
-                    .boxed()
-            }
+                 .then(|_| future::ok(response))
         });
         f.boxed()
     }
@@ -131,7 +119,7 @@ fn main() {
     let addr = "0.0.0.0:9092".parse().expect("Please check the configured address and port number");
     let server = TcpServer::new(KafkaProto, addr);
 
-    let thread_pool = CpuPool::new(10);
+    let thread_pool = CpuPool::new(100);
     let timer = Timer::default();
     
     // DB config. Will need to move inside backend
