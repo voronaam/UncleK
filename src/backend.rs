@@ -49,12 +49,15 @@ fn handle_publish(header: &KafkaRequestHeader, topics: &Vec<KafkaMessageSet>, db
     for topic in topics {
         let mut partition_responses: Vec<u32> = Vec::new();
         for partition in &topic.messages {
-            info!("Actually saving message {:?}:{:?} to topic {:?} partition {:?}", partition.key, partition.value, topic.topic, partition.partition);
-            
-            // CREATE TABLE test (id bigserial, partition int NOT NULL, key BYTEA, value BYTEA);
-            conn.execute(format!("INSERT INTO {} (partition, key, value) VALUES ($1, $2, $3)", topic.topic).as_str(),
-                 &[&(partition.partition as i32), &partition.key, &partition.value]).expect("Failed to insert to the DB");
-            partition_responses.push(partition.partition);
+            let &(ref p_num, ref values) = partition;
+            for msg in values {
+                info!("Actually saving message {:?}:{:?} to topic {:?} partition {:?}", msg.key, msg.value, topic.topic, p_num);
+                
+                // CREATE TABLE test (id bigserial, partition int NOT NULL, key BYTEA, value BYTEA);
+                conn.execute(format!("INSERT INTO {} (partition, key, value) VALUES ($1, $2, $3)", topic.topic).as_str(),
+                     &[&(*p_num as i32), &msg.key, &msg.value]).expect("Failed to insert to the DB");
+            }
+            partition_responses.push(*p_num);
         }
         responses.push((topic.topic.to_string(), partition_responses));
     }

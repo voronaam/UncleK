@@ -59,12 +59,11 @@ pub struct KafkaRequestHeader {
 #[derive(Debug)]
 pub struct KafkaMessageSet {
     pub topic: String,
-    pub messages: Vec<KafkaMessage>
+    pub messages: Vec<(u32, Vec<KafkaMessage>)>
 }
 
 #[derive(Debug)]
 pub struct KafkaMessage {
-    pub partition: u32,
     timestamp: u64,
     pub key: Option<Vec<u8> >,
     pub value: Option<Vec<u8> >
@@ -162,7 +161,19 @@ named!(publish_topic<&[u8], KafkaMessageSet>, do_parse!(
     name:    map!(length_bytes!(be_u16), kafka_string) >>
     streams: length_count!(be_u32, do_parse!(
         partition:     be_u32 >>
-        /*msg_bytes*/  be_u32 >>
+        messages:      flat_map!(length_bytes!(be_u32), message_set) >>
+        ((partition, messages))
+        )) >>
+    (
+      KafkaMessageSet {
+          topic: name,
+          messages: streams
+      }
+    )
+));
+
+fn message_set(input: &[u8]) -> IResult<&[u8], Vec<KafkaMessage>> {
+    many0!(input, do_parse!(
         /*offset */    be_u64 >>
         /*msg bytes*/  be_u32 >>
         /*crc */       be_u32 >> // TODO: we'll need this eventually
@@ -173,19 +184,13 @@ named!(publish_topic<&[u8], KafkaMessageSet>, do_parse!(
         value:         opt_kafka_bytes >>
         (
           KafkaMessage {
-            partition: partition,
             timestamp: timestamp,
             key: key,
             value: value
           }
-        ))) >>
-    (
-      KafkaMessageSet {
-          topic: name,
-          messages: streams
-      }
-    )
-));
+        )
+    ))
+}
 
 fn join_group(header:KafkaRequestHeader, input:&[u8]) -> IResult<&[u8], KafkaRequest> {
     do_parse!(input,
