@@ -4,6 +4,7 @@ extern crate futures_cpupool;
 extern crate tokio_io;
 extern crate tokio_proto;
 extern crate tokio_service;
+extern crate tokio_timer;
 
 extern crate r2d2;
 extern crate r2d2_postgres;
@@ -20,12 +21,14 @@ extern crate crc;
 
 use std::io;
 use std::str;
+use std::time::Duration;
 use bytes::BytesMut;
 use tokio_io::codec::{Encoder, Decoder};
 use tokio_proto::pipeline::ServerProto;
 use tokio_io::{AsyncRead, AsyncWrite};
 use tokio_io::codec::Framed;
 use tokio_service::Service;
+use tokio_timer::Timer;
 use futures::{future, Future, BoxFuture};
 use futures_cpupool::CpuPool;
 use tokio_proto::TcpServer;
@@ -87,6 +90,7 @@ impl<T: AsyncRead + AsyncWrite + 'static> ServerProto<T> for KafkaProto {
 pub struct KafkaService {
     thread_pool: CpuPool,
     db_pool: r2d2::Pool<r2d2_postgres::PostgresConnectionManager>, // Also to be moved into the backend
+    timer: tokio_timer::Timer,
 }
 
 impl Service for KafkaService {
@@ -97,12 +101,26 @@ impl Service for KafkaService {
 
     fn call(&self, req: Self::Request) -> Self::Future {
         let db = self.db_pool.clone();
+        let timer = self.timer.clone();
         let f = self.thread_pool.spawn_fn(move || {
             debug!("Sending a request to the backend {:?}", req);
             let response = backend::handle_request(req, db);
             debug!("Response from the backend {:?}", response);
-            info!("Response emptines {}", response.is_empty());
-            future::ok(response)
+            /*
+            let delay = if response.is_empty() {0} else {1000};
+            timer.sleep(Duration::from_millis(delay))
+                .map_err(|_| io::Error::new(io::ErrorKind::Other, "oh no!"))
+                .join(future::ok(response))
+                .map(|t| t.1)
+            */
+            if !response.is_empty() {
+                future::ok(response).boxed()
+            } else {
+                timer.sleep(Duration::from_millis(1000))
+                    .map(|_| response)
+                    .map_err(|_| io::Error::new(io::ErrorKind::Other, "oh no!"))
+                    .boxed()
+            }
         });
         f.boxed()
     }
@@ -114,6 +132,7 @@ fn main() {
     let server = TcpServer::new(KafkaProto, addr);
 
     let thread_pool = CpuPool::new(10);
+    let timer = Timer::default();
     
     // DB config. Will need to move inside backend
     let db_url = "postgres://avorona:avorona@localhost";
@@ -123,6 +142,7 @@ fn main() {
 
     server.serve(move || Ok(KafkaService {
         thread_pool: thread_pool.clone(),
-        db_pool: db_pool.clone()
+        db_pool: db_pool.clone(),
+        timer: timer.clone()
     }));
 }
