@@ -76,7 +76,8 @@ fn handle_fetch(header: &KafkaRequestHeader, topics: &Vec<(String, Vec<(u32, u64
     for topic in topics {
         let mut partition_responses: Vec<(u64, Option<Vec<u8>>, Vec<u8>)> = Vec::new();
         let id = topic.1.get(0).expect("Need at least one partion in request").1 as i64;
-        let rs = conn.query(format!("SELECT id, partition, key, value FROM {} WHERE id >= $1", topic.0).as_str(), &[&id]).expect("DB query failed");
+        // TODO smart limit calculation
+        let rs = conn.query(format!("SELECT id, partition, key, value FROM {} WHERE id >= $1 LIMIT 25", topic.0).as_str(), &[&id]).expect("DB query failed");
         for row in &rs {
             let offset: i64 = row.get(0);
             let key: Option<Vec<u8>> = row.get(2);

@@ -59,6 +59,18 @@ impl KafkaResponseHeader {
     }
 }
 
+impl KafkaResponse {
+    pub fn is_empty(&self) -> bool {
+        match self.req {
+            ApiResponse::FetchResponse { ref responses, .. } => {
+                // responses: Vec<(String, Vec<(u64, Option<Vec<u8>>, Vec<u8>)>)>
+                !responses.iter().any(|t| t.1.iter().any(|r| !r.2.is_empty()))
+            },
+            _ => false
+        }
+    }
+}
+
 pub fn to_bytes(msg: &KafkaResponse, out: &mut BytesMut) {
     let mut buf = BytesMut::with_capacity(1024);
     match msg.req {

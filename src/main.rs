@@ -101,10 +101,10 @@ impl Service for KafkaService {
             debug!("Sending a request to the backend {:?}", req);
             let response = backend::handle_request(req, db);
             debug!("Response from the backend {:?}", response);
+            info!("Response emptines {}", response.is_empty());
             future::ok(response)
         });
         f.boxed()
-        // future::ok(response).boxed()
     }
 }
 
