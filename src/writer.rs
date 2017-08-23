@@ -28,7 +28,7 @@ pub enum ApiResponse {
         assignment: Option<Vec<u8>>
     },
     FetchOffsetsResponse {
-        topics: Vec<TopicWithPartitions>
+        topics: Vec<(String, Vec<(u32, i64)>)>
     },
     OffsetsResponse {
         topics: Vec<TopicWithPartitions>
@@ -310,14 +310,14 @@ fn sync_group_to_bytes(assignment: &Option<Vec<u8>>, out: &mut BytesMut) {
     }
 }
 
-fn fetch_offsets_to_bytes(topics: &Vec<TopicWithPartitions>, out: &mut BytesMut) {
+fn fetch_offsets_to_bytes(topics: &Vec<(String, Vec<(u32, i64)>)>, out: &mut BytesMut) {
     out.put_u32::<BigEndian>(topics.len() as u32);
     for topic in topics {
-        string_to_bytes(&topic.name, out);
-        out.put_u32::<BigEndian>(topic.partitions.len() as u32);
-        for p in &topic.partitions {
-            out.put_u32::<BigEndian>(*p); // partition
-            out.put_i64::<BigEndian>(-1); // offset
+        string_to_bytes(&topic.0, out);
+        out.put_u32::<BigEndian>(topic.1.len() as u32);
+        for p in &topic.1 {
+            out.put_u32::<BigEndian>(p.0); // partition
+            out.put_i64::<BigEndian>(p.1); // offset
             opt_string_to_bytes(&None, out);
             out.put_u16::<BigEndian>(0); // error_code
         }
