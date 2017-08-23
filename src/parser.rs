@@ -39,6 +39,7 @@ pub enum ApiRequest {
     Fetch {
         topics: Vec<(String, Vec<(u32, u64)>)>
     },
+    LeaveGroup,
 }
 
 #[derive(Debug)]
@@ -351,6 +352,7 @@ pub fn kafka_request(input:&[u8]) -> IResult<&[u8], KafkaRequest> {
            KafkaRequestHeader {opcode:10, version: 0, .. } => IResult::Done(input, KafkaRequest{header: req, req: ApiRequest::FindGroupCoordinator}),
            KafkaRequestHeader {opcode:11, version: 1, .. } => join_group(req, tail),
            KafkaRequestHeader {opcode:12, version: 0, .. } => IResult::Done(input, KafkaRequest{header: req, req: ApiRequest::Heartbeat}),
+           KafkaRequestHeader {opcode:13, version: 0, .. } => IResult::Done(input, KafkaRequest{header: req, req: ApiRequest::LeaveGroup}),
            KafkaRequestHeader {opcode:14, version: 0, .. } => sync_group(req, tail),
            KafkaRequestHeader {opcode:18, version: 0, .. } => versions(req, tail),
            _ => {

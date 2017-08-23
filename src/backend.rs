@@ -17,6 +17,7 @@ pub fn handle_request(req: KafkaRequest, db: Pool<r2d2_postgres::PostgresConnect
         ApiRequest::Offsets { topics } => handle_offsets(&req.header, &topics),
         ApiRequest::OffsetCommit { topics } => handle_offset_commit(&req.header, &topics),
         ApiRequest::Heartbeat => handle_heartbeat(&req),
+        ApiRequest::LeaveGroup => handle_leave_group(&req),
         _ => handle_unknown(&req)
     }
 }
@@ -169,5 +170,12 @@ fn handle_heartbeat(req: &KafkaRequest) -> KafkaResponse {
     KafkaResponse {
         header: KafkaResponseHeader::new(req.header.correlation_id),
         req: ApiResponse::HeartbeatResponse
+    }
+}
+
+fn handle_leave_group(req: &KafkaRequest) -> KafkaResponse {
+    KafkaResponse {
+        header: KafkaResponseHeader::new(req.header.correlation_id),
+        req: ApiResponse::LeaveGroupResponse
     }
 }
