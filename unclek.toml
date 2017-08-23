@@ -1,0 +1,6 @@
+listen = "0.0.0.0:9092"
+
+[database]
+url = "postgres://avorona:avorona@localhost"
+
+

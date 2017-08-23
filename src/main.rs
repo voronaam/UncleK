@@ -1,4 +1,4 @@
-extern crate bytes;
+// Basic imports from the tokio framework
 extern crate futures;
 extern crate futures_cpupool;
 extern crate tokio_io;
@@ -6,18 +6,30 @@ extern crate tokio_proto;
 extern crate tokio_service;
 extern crate tokio_timer;
 
+// DB pool
 extern crate r2d2;
 extern crate r2d2_postgres;
 
+// Parser for the requests
 #[macro_use]
 extern crate nom;
+// And the seriaizer
+extern crate bytes;
 
+// The logging library
 extern crate pretty_env_logger;
 #[macro_use]
 extern crate log;
 
+// Needed to produce auxilary fields in Kafka responses
 extern crate hostname;
 extern crate crc;
+
+// Needed to parse the config file
+extern crate config;
+extern crate serde;
+#[macro_use]
+extern crate serde_derive;
 
 use std::io;
 use std::str;
@@ -35,10 +47,12 @@ use tokio_proto::TcpServer;
 use nom::IResult;
 use r2d2_postgres::{TlsMode, PostgresConnectionManager};
 
+mod settings;
 mod parser;
 mod backend;
 mod writer;
 
+use settings::Settings;
 use parser::KafkaRequest;
 use writer::KafkaResponse;
 
@@ -116,14 +130,16 @@ impl Service for KafkaService {
 
 fn main() {
     pretty_env_logger::init().unwrap();
-    let addr = "0.0.0.0:9092".parse().expect("Please check the configured address and port number");
+    let cnf = Settings::new().expect("Failed to parse the configuration file");
+    debug!("Using configuraion {:?}", cnf);
+    let addr = cnf.listen().parse().expect("Please check the configured address and port number");
     let server = TcpServer::new(KafkaProto, addr);
 
-    let thread_pool = CpuPool::new(100);
+    let thread_pool = CpuPool::new(cnf.threads.unwrap_or(100));
     let timer = Timer::default();
     
     // DB config. Will need to move inside backend
-    let db_url = "postgres://avorona:avorona@localhost";
+    let db_url = cnf.database.url;
     let db_config = r2d2::Config::default();
     let db_manager = PostgresConnectionManager::new(db_url, TlsMode::None).unwrap();
     let db_pool = r2d2::Pool::new(db_config, db_manager).unwrap();
