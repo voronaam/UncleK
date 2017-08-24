@@ -26,7 +26,7 @@ pub fn handle_request(req: KafkaRequest, db: Pool<r2d2_postgres::PostgresConnect
         ApiRequest::JoinGroup { protocols, .. } => handle_join_group(&req.header, &protocols),
         ApiRequest::SyncGroup { assignments, .. } => handle_sync_group(&req.header, &assignments),
         ApiRequest::FetchOffsets { topics, .. } => handle_fetch_offsets(&req.header, &topics, &db),
-        ApiRequest::Offsets { topics } => handle_offsets(&req.header, &topics),
+        ApiRequest::Offsets { topics } => handle_offsets(&req.header, &topics, &db),
         ApiRequest::OffsetCommit { topics } => handle_offset_commit(&req.header, &topics),
         ApiRequest::Heartbeat => handle_heartbeat(&req),
         ApiRequest::LeaveGroup => handle_leave_group(&req),
@@ -137,13 +137,16 @@ fn handle_sync_group(header: &KafkaRequestHeader, assignments: &Vec<Option<Vec<u
 }
 
 fn handle_fetch_offsets(header: &KafkaRequestHeader, topics: &Vec<TopicWithPartitions>,
-                        db: &Pool<r2d2_postgres::PostgresConnectionManager>) -> KafkaResponse {
-    let conn = db.get().expect("Could not get a DB connection");
+                        db: &DbPool) -> KafkaResponse {
+    // let conn = db.get().expect("Could not get a DB connection");
     let mut responses: Vec<(String, Vec<(u32, i64)>)> = Vec::new();
     for topic in topics {
         let mut partition_responses: Vec<(u32, i64)> = Vec::new();
+        /* This is the code we may need in the future when we support consumer groups. Having it now break consumption from beginning
         let rs = conn.query(format!("SELECT max(id) + 1 FROM {}", topic.name).as_str(), &[]).expect("DB query failed");
         let offset: i64 = rs.iter().next().map(|r| r.get(0)).unwrap_or(-1);
+        */
+        let offset = -1; // Just say there is no offset on the group yet.
         for p in &topic.partitions {
             partition_responses.push((*p, offset));
         }
@@ -160,11 +163,31 @@ fn handle_fetch_offsets(header: &KafkaRequestHeader, topics: &Vec<TopicWithParti
     }
 }
 
-fn handle_offsets(header: &KafkaRequestHeader, topics: &Vec<TopicWithPartitions>) -> KafkaResponse {
+fn handle_offsets(header: &KafkaRequestHeader, topics: &Vec<(String, Vec<(u32, i64)>)>, db: &DbPool) -> KafkaResponse {
+    let conn = db.get().expect("Could not get a DB connection");
+    let mut responses: Vec<(String, Vec<(u32, i64)>)> = Vec::new();
+    for topic in topics {
+        let mut partition_responses: Vec<(u32, i64)> = Vec::new();
+        // Get offset by timestamp. Consider the two special values
+        let offset: i64 = match topic.1.get(0).map(|t| t.1).unwrap_or(-1) {
+            -2 => 0, // Start from the beginning
+            -1 => {  // Start from the current HEAD
+                let rs = conn.query(format!("SELECT max(id) + 1 FROM {}", topic.0).as_str(), &[]).expect("DB query failed");
+                rs.iter().next().map(|r| r.get(0)).unwrap_or(-1)
+            },
+            _ => -1 // TODO Support lookup by an actual timestamp
+        };
+        for p in &topic.1 {
+            partition_responses.push((p.0, offset));
+        }
+        responses.push((topic.0.to_string(), partition_responses));
+    }
+    debug!("About to send a offsets response with content {:?}", responses);
+
     KafkaResponse {
         header: KafkaResponseHeader::new(header.correlation_id),
         req: ApiResponse::OffsetsResponse {
-            topics: topics.to_vec()
+            topics: responses
         }
     }
 }

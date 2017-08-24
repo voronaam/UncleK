@@ -31,7 +31,7 @@ pub enum ApiResponse {
         topics: Vec<(String, Vec<(u32, i64)>)>
     },
     OffsetsResponse {
-        topics: Vec<TopicWithPartitions>
+        topics: Vec<(String, Vec<(u32, i64)>)>
     },
     OffsetCommitResponse {
         topics: Vec<TopicWithPartitions>
@@ -327,16 +327,16 @@ fn fetch_offsets_to_bytes(topics: &Vec<(String, Vec<(u32, i64)>)>, out: &mut Byt
     out.put_u16::<BigEndian>(0); // error_code
 }
 
-fn offsets_to_bytes(topics: &Vec<TopicWithPartitions>, out: &mut BytesMut) {
+fn offsets_to_bytes(topics: &Vec<(String, Vec<(u32, i64)>)>, out: &mut BytesMut) {
     out.put_u32::<BigEndian>(topics.len() as u32);
     for topic in topics {
-        string_to_bytes(&topic.name, out);
-        out.put_u32::<BigEndian>(topic.partitions.len() as u32);
-        for p in &topic.partitions {
-            out.put_u32::<BigEndian>(*p); // partition
+        string_to_bytes(&topic.0, out);
+        out.put_u32::<BigEndian>(topic.1.len() as u32);
+        for p in &topic.1 {
+            out.put_u32::<BigEndian>(p.0); // partition
             out.put_u16::<BigEndian>(0); // error_code
             out.put_u64::<BigEndian>(0); // timestamp
-            out.put_i64::<BigEndian>(0); // offset
+            out.put_i64::<BigEndian>(p.1); // offset
         }
     }
 }

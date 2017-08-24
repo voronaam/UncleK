@@ -1,4 +1,4 @@
-use nom::{IResult,ErrorKind,be_u16,be_u32,be_u64,be_i16,be_i32};
+use nom::{IResult,ErrorKind,be_u16,be_u32,be_u64,be_i64,be_i16,be_i32};
 
 // Anything that is a Kafka ApiKey request.
 #[derive(Debug)]
@@ -29,7 +29,7 @@ pub enum ApiRequest {
         topics: Vec<TopicWithPartitions>
     },
     Offsets {
-        topics: Vec<TopicWithPartitions>
+        topics: Vec<(String, Vec<(u32, i64)>)>
     },
     OffsetCommit {
         topics: Vec<TopicWithPartitions>
@@ -269,10 +269,10 @@ fn offsets(header:KafkaRequestHeader, input:&[u8]) -> IResult<&[u8], KafkaReques
         topic:                map!(length_bytes!(be_u16), kafka_string) >>
         partitions:           length_count!(be_u32, do_parse!(
           partition:            be_u32 >>
-          /*timestamp*/         be_u64 >>
-                                (partition)
+          timestamp:            be_i64 >>
+                                ((partition, timestamp))
                               )) >>
-                              (TopicWithPartitions::new(topic, partitions))
+                              ((topic, partitions))
                             )) >>
     (
       KafkaRequest {
