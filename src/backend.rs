@@ -1,8 +1,20 @@
-
 use parser::*;
 use writer::*;
 use r2d2_postgres;
+use r2d2;
 use r2d2::Pool;
+use r2d2_postgres::{TlsMode, PostgresConnectionManager};
+use settings::Settings;
+
+pub type DbPool = Pool<r2d2_postgres::PostgresConnectionManager>;
+
+pub fn initialize(cnf: &Settings) -> DbPool {
+    let db_url = cnf.database.url.to_string();
+    let db_config = r2d2::Config::default();
+    let db_manager = PostgresConnectionManager::new(db_url, TlsMode::None).unwrap();
+    let db_pool = r2d2::Pool::new(db_config, db_manager).unwrap();
+    db_pool
+}
 
 pub fn handle_request(req: KafkaRequest, db: Pool<r2d2_postgres::PostgresConnectionManager>) -> KafkaResponse {
     match req.req {

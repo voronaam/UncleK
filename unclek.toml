@@ -4,3 +4,12 @@ listen = "0.0.0.0:9092"
 url = "postgres://avorona:avorona@localhost"
 
 
+[[topic]]
+name= "test01"
+
+[[topic]]
+name= "test02"
+compacted = true
+
+[[topic]]
+name= "test03"

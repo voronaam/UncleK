@@ -6,10 +6,17 @@ pub struct Database {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct Topic {
+    pub name: String,
+    pub compacted: Option<bool>
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Settings {
     listen: Option<String>,
     pub threads: Option<usize>,
     pub database: Database,
+    pub topic: Vec<Topic>
 }
 
 impl Settings {

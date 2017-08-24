@@ -45,7 +45,6 @@ use futures::{future, Future, BoxFuture};
 use futures_cpupool::CpuPool;
 use tokio_proto::TcpServer;
 use nom::IResult;
-use r2d2_postgres::{TlsMode, PostgresConnectionManager};
 
 mod settings;
 mod parser;
@@ -103,7 +102,7 @@ impl<T: AsyncRead + AsyncWrite + 'static> ServerProto<T> for KafkaProto {
 
 pub struct KafkaService {
     thread_pool: CpuPool,
-    db_pool: r2d2::Pool<r2d2_postgres::PostgresConnectionManager>, // Also to be moved into the backend
+    db_pool: backend::DbPool,
     timer: tokio_timer::Timer,
 }
 
@@ -138,11 +137,7 @@ fn main() {
     let thread_pool = CpuPool::new(cnf.threads.unwrap_or(100));
     let timer = Timer::default();
     
-    // DB config. Will need to move inside backend
-    let db_url = cnf.database.url;
-    let db_config = r2d2::Config::default();
-    let db_manager = PostgresConnectionManager::new(db_url, TlsMode::None).unwrap();
-    let db_pool = r2d2::Pool::new(db_config, db_manager).unwrap();
+    let db_pool = backend::initialize(&cnf);
 
     server.serve(move || Ok(KafkaService {
         thread_pool: thread_pool.clone(),
