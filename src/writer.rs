@@ -80,6 +80,7 @@ pub fn to_bytes(msg: &KafkaResponse, out: &mut BytesMut) {
         ApiResponse::JoinGroupResponse {ref protocol} => join_group_to_bytes(protocol, &mut buf),
         ApiResponse::MetadataResponse { version: 2, ref cluster } => metadata_to_bytes(cluster, &mut buf),
         ApiResponse::PublishResponse { version: 2, ref responses } => publish_to_bytes(responses, &mut buf),
+        ApiResponse::FetchResponse { version: 2, ref responses } => fetch_to_bytes(responses, &mut buf),
         ApiResponse::FetchResponse { version: 3, ref responses } => fetch_to_bytes(responses, &mut buf),
         ApiResponse::SyncGroupResponse { ref assignment } => sync_group_to_bytes(assignment, &mut buf),
         ApiResponse::FetchOffsetsResponse { ref topics } => fetch_offsets_to_bytes(topics, &mut buf),
