@@ -25,6 +25,8 @@ Compatibility is aiming Apache Kafka 0.10.2.1
 - [ ] Server stabiliy code (don't panic so much on errors)
 - [ ] Protocol extensions to make performance better (e.g. empty response being empty)
 - [ ] Admin UI
+    - track producers
+    - track consumers
 
 # Testing notes:
 
