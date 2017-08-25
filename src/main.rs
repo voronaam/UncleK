@@ -102,7 +102,7 @@ impl<T: AsyncRead + AsyncWrite + 'static> ServerProto<T> for KafkaProto {
 
 pub struct KafkaService {
     thread_pool: CpuPool,
-    db_pool: backend::DbPool,
+    db_pool: backend::PgState,
     timer: tokio_timer::Timer,
 }
 

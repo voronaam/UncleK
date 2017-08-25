@@ -4,19 +4,49 @@ use r2d2_postgres;
 use r2d2;
 use r2d2::Pool;
 use r2d2_postgres::{TlsMode, PostgresConnectionManager};
+use std::collections::HashMap;
 use settings::Settings;
+use settings::Topic;
 
-pub type DbPool = Pool<r2d2_postgres::PostgresConnectionManager>;
+#[derive(Debug, Clone)]
+pub struct PgState {
+    pub pool: Pool<r2d2_postgres::PostgresConnectionManager>,
+    pub topics: HashMap<String, Topic>
+}
 
-pub fn initialize(cnf: &Settings) -> DbPool {
+pub fn initialize(cnf: &Settings) -> PgState {
     let db_url = cnf.database.url.to_string();
     let db_config = r2d2::Config::default();
     let db_manager = PostgresConnectionManager::new(db_url, TlsMode::None).unwrap();
     let db_pool = r2d2::Pool::new(db_config, db_manager).unwrap();
-    db_pool
+    create_tables(&cnf.topic, &db_pool);
+    let mut map = HashMap::new();
+    for topic in &cnf.topic {
+        map.insert(topic.name.to_string(), topic.clone());
+    }
+    PgState {
+        pool: db_pool,
+        topics: map
+    }
 }
 
-pub fn handle_request(req: KafkaRequest, db: Pool<r2d2_postgres::PostgresConnectionManager>) -> KafkaResponse {
+fn create_tables(topics: &Vec<Topic>, db: &Pool<r2d2_postgres::PostgresConnectionManager>) {
+    let conn = db.get().expect("Could not get a DB connection");
+    for topic in topics {
+        let uniq = if topic.compacted.unwrap_or(false) {"UNIQUE"} else {""};
+        conn.execute(format!(r#"
+            CREATE TABLE IF NOT EXISTS {} (
+                id bigserial PRIMARY KEY,
+                partition int NOT NULL,
+                ts timestamp NOT NULL,
+                key BYTEA {},
+                value BYTEA)
+            "#,
+            topic.name, uniq).as_str(), &[]).expect("Failed to create DB table");
+    }
+}
+
+pub fn handle_request(req: KafkaRequest, db: PgState) -> KafkaResponse {
     match req.req {
         ApiRequest::Metadata { topics } => handle_metadata(&req.header, &topics),
         ApiRequest::Publish { topics, .. } => handle_publish(&req.header, &topics, &db),
@@ -56,19 +86,24 @@ fn handle_metadata(header: &KafkaRequestHeader, topics: &Vec<String>) -> KafkaRe
     }
 }
 
-fn handle_publish(header: &KafkaRequestHeader, topics: &Vec<KafkaMessageSet>, db: &Pool<r2d2_postgres::PostgresConnectionManager>) -> KafkaResponse {
-    let conn = db.get().expect("Could not get a DB connection");
+fn handle_publish(header: &KafkaRequestHeader, topics: &Vec<KafkaMessageSet>, db: &PgState) -> KafkaResponse {
+    let conn = db.pool.get().expect("Could not get a DB connection");
     let mut responses: Vec<(String, Vec<u32>)> = Vec::new();
     for topic in topics {
         let mut partition_responses: Vec<u32> = Vec::new();
         for partition in &topic.messages {
             let &(ref p_num, ref values) = partition;
             for msg in values {
-                info!("Actually saving message {:?}:{:?} to topic {:?} partition {:?}", msg.key, msg.value, topic.topic, p_num);
-                
-                // CREATE TABLE test (id bigserial, partition int NOT NULL, key BYTEA, value BYTEA);
-                conn.execute(format!("INSERT INTO {} (partition, key, value) VALUES ($1, $2, $3)", topic.topic).as_str(),
-                     &[&(*p_num as i32), &msg.key, &msg.value]).expect("Failed to insert to the DB");
+                debug!("Actually saving message {:?}:{:?} to topic {:?} partition {:?}", msg.key, msg.value, topic.topic, p_num);
+                let uniq = if db.topics.get(&topic.topic).and_then(|t| t.compacted).unwrap_or(false) {
+                    "ON CONFLICT (key) DO UPDATE SET value=$3, ts=now()"
+                    // We can also easily update id to the next seq value. But this may have performance implications (index rebuild)
+                } else {
+                    ""
+                };
+                conn.execute(format!("INSERT INTO {} (partition, ts, key, value) VALUES ($1, now(), $2, $3) {}",
+                    topic.topic, uniq).as_str(),
+                    &[&(*p_num as i32), &msg.key, &msg.value]).expect("Failed to insert to the DB");
             }
             partition_responses.push(*p_num);
         }
@@ -83,8 +118,8 @@ fn handle_publish(header: &KafkaRequestHeader, topics: &Vec<KafkaMessageSet>, db
     }
 }
 
-fn handle_fetch(header: &KafkaRequestHeader, topics: &Vec<(String, Vec<(u32, u64)>)>, db: &Pool<r2d2_postgres::PostgresConnectionManager>) -> KafkaResponse {
-    let conn = db.get().expect("Could not get a DB connection");
+fn handle_fetch(header: &KafkaRequestHeader, topics: &Vec<(String, Vec<(u32, u64)>)>, db: &PgState) -> KafkaResponse {
+    let conn = db.pool.get().expect("Could not get a DB connection");
     let mut responses: Vec<(String, Vec<(u64, Option<Vec<u8>>, Vec<u8>)>)> = Vec::new();
     for topic in topics {
         let mut partition_responses: Vec<(u64, Option<Vec<u8>>, Vec<u8>)> = Vec::new();
@@ -155,8 +190,8 @@ fn handle_fetch_offsets(header: &KafkaRequestHeader, topics: &Vec<TopicWithParti
     }
 }
 
-fn handle_offsets(header: &KafkaRequestHeader, topics: &Vec<(String, Vec<(u32, i64)>)>, db: &DbPool) -> KafkaResponse {
-    let conn = db.get().expect("Could not get a DB connection");
+fn handle_offsets(header: &KafkaRequestHeader, topics: &Vec<(String, Vec<(u32, i64)>)>, db: &PgState) -> KafkaResponse {
+    let conn = db.pool.get().expect("Could not get a DB connection");
     let mut responses: Vec<(String, Vec<(u32, i64)>)> = Vec::new();
     for topic in topics {
         let mut partition_responses: Vec<(u32, i64)> = Vec::new();

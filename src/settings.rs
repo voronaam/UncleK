@@ -5,7 +5,7 @@ pub struct Database {
     pub url: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Topic {
     pub name: String,
     pub compacted: Option<bool>

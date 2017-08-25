@@ -5,6 +5,9 @@ url = "postgres://avorona:avorona@localhost"
 
 
 [[topic]]
+name= "test"
+
+[[topic]]
 name= "test01"
 
 [[topic]]
