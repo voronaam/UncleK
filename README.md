@@ -4,9 +4,13 @@ This project is an alternative implementation of a server working on the Apache 
 
 ## The goal and motivation
 
-The idea of event sourcing behind Apache Kafka is very interesting and has many applications. However, the implementaion side is not impressive. It has been written by people far removed from the Software Engineering and is suffering from many problems. I am not listing them here, but they are grave enough to not be fixable by some pull requests to the main project.
+The idea of event sourcing behind Apache Kafka is very interesting and has many applications. However, the implementaion side is not impressive. I am not listing Apache Kafka implementations issues here, but they are grave enough to not be fixable by a few pull requests to the main project.
 
 The goal is to provide a scalable alternative to Apache Kafka.
+
+## Curent status
+
+I am maintaining a [separate status page ](status.md), a changelog and a TODO list in one.
 
 ## Frequently Asked Questions
 
@@ -24,7 +28,7 @@ Rust is a powerful language, but it is very low level and helps me to avoid many
 
 * Do you see any practical use case for Uncle K.?
 
-Sure. IoT (Internet of Things) is coming and those things will produce a lot of events. And they are not going to have gigbytes of RAM. At least not right away. But Apache Kafka is huge and recommended RAM is in the range of tens of gigabytes (64Gb, actually). Uncle K. is a 5Mb executable (statically linked release build) which runs in under 100mb of RAM (when under load). Of course the current implementation needs PostgreSQL server as well. You should take that into account.
+Sure. IoT (Internet of Things) is coming and those things will produce a lot of events. And they are not going to have gigabytes of RAM. At least not right away. But Apache Kafka is huge and recommended RAM is in the range of tens of gigabytes (64Gb, actually). Uncle K. is a 6Mb executable (statically linked release build) which runs in under 100mb of RAM (when under load). Of course the current implementation needs PostgreSQL server as well. You should take that into account.
 
 * Talk is cheap, show me the code
 
@@ -36,4 +40,4 @@ Please don't. If you really want to, talk to me first. We can make it work decen
 
 * Is Apache Kafka Protocol any good? If not, why are you using it?
 
-It is terrible. I can talk about its flaws for hours. But do not take my word for it, take a tcdump of the vanilla server and see for youself. But the clients for the protcol has been written in many languages and people are using it. My goal is write a decent drop-in replacement first. And fix the protocol later.
+It... has its issues. I can talk about its flaws for hours. But do not take my word for it, take a tcdump of the vanilla server and see for yourself. But the clients for the protcol have been written in many languages and people are using it. My goal is to write a decent drop-in replacement first. And fix the protocol later.
