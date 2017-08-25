@@ -8,9 +8,9 @@ The idea of event sourcing behind Apache Kafka is very interesting and has many 
 
 The goal is to provide a scalable alternative to Apache Kafka.
 
-## Curent status
+## Current status
 
-I am maintaining a [separate status page ](status.md), a changelog and a TODO list in one.
+I am maintaining a [separate status page](status.md), a changelog and a TODO list in one.
 
 ## Frequently Asked Questions
 
