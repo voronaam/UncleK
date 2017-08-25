@@ -12,6 +12,14 @@ The goal is to provide a scalable alternative to Apache Kafka.
 
 I am maintaining a [separate status page](status.md), a changelog and a TODO list in one.
 
+## Running the code
+
+1. Make sure rust build environment is set up
+2. Modify [unclek.toml](unclek.toml) to point at a PostgreSQL DB (9.5+)
+3. Do `cargo run`
+
+You may want to export `RUST_LOG=debug` for more logging output.
+
 ## Frequently Asked Questions
 
 * But are not you simly dumping the data into PostgreSQL now?
