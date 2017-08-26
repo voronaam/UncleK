@@ -129,7 +129,11 @@ fn versions(header:KafkaRequestHeader, input:&[u8]) -> IResult<&[u8], KafkaReque
 
 fn metadata(header:KafkaRequestHeader, input:&[u8]) -> IResult<&[u8], KafkaRequest> {
     do_parse!(input,
-      topics: length_count!(be_u32, map!(length_bytes!(be_u16), kafka_string)) >>
+      topics:
+      alt!(
+        tag!([0xff, 0xff, 0xff, 0xff]) => { |_| Vec::new() } |
+        length_count!(be_u32, map!(length_bytes!(be_u16), kafka_string))
+      ) >>
     (
       KafkaRequest {
         header: header,
@@ -193,7 +197,32 @@ fn message_set(input: &[u8]) -> IResult<&[u8], Vec<KafkaMessage>> {
     ))
 }
 
-fn join_group(header:KafkaRequestHeader, input:&[u8]) -> IResult<&[u8], KafkaRequest> {
+fn join_group0(header:KafkaRequestHeader, input:&[u8]) -> IResult<&[u8], KafkaRequest> {
+    do_parse!(input,
+      group_id:             map!(length_bytes!(be_u16), kafka_string) >>
+      /*session_timeout*/   be_u32 >>
+      member_id:            map!(length_bytes!(be_u16), kafka_string) >>
+      protocol_type:        map!(length_bytes!(be_u16), kafka_string) >>
+      protocols:            length_count!(be_u32, do_parse!(
+          name:               map!(length_bytes!(be_u16), kafka_string) >>
+          metadata:           opt_kafka_bytes >>
+                              ((name, metadata))
+                            )) >>
+    (
+      KafkaRequest {
+        header: header,
+        req: ApiRequest::JoinGroup {
+            group_id: group_id,
+            member_id: member_id,
+            protocol_type: protocol_type,
+            protocols: protocols
+        }
+      }
+    )
+   )
+}
+
+fn join_group1(header:KafkaRequestHeader, input:&[u8]) -> IResult<&[u8], KafkaRequest> {
     do_parse!(input,
       group_id:             map!(length_bytes!(be_u16), kafka_string) >>
       /*session_timeout*/   be_u32 >>
@@ -262,7 +291,31 @@ fn fetch_offset(header:KafkaRequestHeader, input:&[u8]) -> IResult<&[u8], KafkaR
    )
 }
 
-fn offsets(header:KafkaRequestHeader, input:&[u8]) -> IResult<&[u8], KafkaRequest> {
+fn offsets0(header:KafkaRequestHeader, input:&[u8]) -> IResult<&[u8], KafkaRequest> {
+    do_parse!(input,
+      /* replica_id */      be_u32 >>
+      topics:               length_count!(be_u32, do_parse!(
+        topic:                map!(length_bytes!(be_u16), kafka_string) >>
+        partitions:           length_count!(be_u32, do_parse!(
+          partition:            be_u32 >>
+          timestamp:            be_i64 >>
+          /*max_num_offsets*/   be_u32 >>
+                                ((partition, timestamp))
+                              )) >>
+                              ((topic, partitions))
+                            )) >>
+    (
+      KafkaRequest {
+        header: header,
+        req: ApiRequest::Offsets {
+            topics: topics
+        }
+      }
+    )
+   )
+}
+
+fn offsets1(header:KafkaRequestHeader, input:&[u8]) -> IResult<&[u8], KafkaRequest> {
     do_parse!(input,
       /* replica_id */      be_u32 >>
       topics:               length_count!(be_u32, do_parse!(
@@ -372,12 +425,14 @@ pub fn kafka_request(input:&[u8]) -> IResult<&[u8], KafkaRequest> {
            KafkaRequestHeader {opcode: 0, version: 2, .. } => publish(req, tail),
            KafkaRequestHeader {opcode: 1, version: 2, .. } => fetch2(req, tail),
            KafkaRequestHeader {opcode: 1, version: 3, .. } => fetch3(req, tail),
-           KafkaRequestHeader {opcode: 2, version: 1, .. } => offsets(req, tail),
+           KafkaRequestHeader {opcode: 2, version: 0, .. } => offsets0(req, tail),
+           KafkaRequestHeader {opcode: 2, version: 1, .. } => offsets1(req, tail),
            KafkaRequestHeader {opcode: 3, version: 2, .. } => metadata(req, tail),
            KafkaRequestHeader {opcode: 8, version: 2, .. } => offset_commit(req, tail),
            KafkaRequestHeader {opcode: 9, .. }             => fetch_offset(req, tail),
            KafkaRequestHeader {opcode:10, version: 0, .. } => IResult::Done(input, KafkaRequest{header: req, req: ApiRequest::FindGroupCoordinator}),
-           KafkaRequestHeader {opcode:11, version: 1, .. } => join_group(req, tail),
+           KafkaRequestHeader {opcode:11, version: 0, .. } => join_group0(req, tail),
+           KafkaRequestHeader {opcode:11, version: 1, .. } => join_group1(req, tail),
            KafkaRequestHeader {opcode:12, version: 0, .. } => IResult::Done(input, KafkaRequest{header: req, req: ApiRequest::Heartbeat}),
            KafkaRequestHeader {opcode:13, version: 0, .. } => IResult::Done(input, KafkaRequest{header: req, req: ApiRequest::LeaveGroup}),
            KafkaRequestHeader {opcode:14, version: 0, .. } => sync_group(req, tail),

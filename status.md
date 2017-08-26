@@ -11,6 +11,7 @@ Compatibility is aiming Apache Kafka 0.10.2.1
 - [x] Consuming from topics (HEAD, beginning, etc)
 - [x] Compacted topics
 - [ ] Data cleanup thread
+- [ ] Compression
 - [ ] Consumer groups. Currently any consumer connecting is being told it is the only consumer.
 
 # Client support
@@ -39,4 +40,9 @@ Compatibility is aiming Apache Kafka 0.10.2.1
 # librdkafka tested using the latest build of kafkacat on top of latest build of the library
 ./kafkacat -P -b 127.0.0.1 -t test -c 2
 ./kafkacat -C -b 127.0.0.1 -t test
+./kafkacat -L -b 127.0.0.1
+./kafkacat -L -b 127.0.0.1 -t test
+./kafkacat -Q -b 127.0.0.1 -t test:0:-1 # -1 is the latest offset
+./kafkacat -Q -b 127.0.0.1 -t test:0:-2 # -2 is the earliest available offset
+./kafkacat -b 127.0.0.1 -G gr1 test
 ```
