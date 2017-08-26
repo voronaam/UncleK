@@ -19,9 +19,9 @@ pub fn initialize(cnf: &Settings) -> PgState {
     let db_config = r2d2::Config::default();
     let db_manager = PostgresConnectionManager::new(db_url, TlsMode::None).unwrap();
     let db_pool = r2d2::Pool::new(db_config, db_manager).unwrap();
-    create_tables(&cnf.topic, &db_pool);
+    create_tables(&cnf.topics, &db_pool);
     let mut map = HashMap::new();
-    for topic in &cnf.topic {
+    for topic in &cnf.topics {
         map.insert(topic.name.to_string(), topic.clone());
     }
     PgState {
@@ -35,7 +35,7 @@ fn create_tables(topics: &Vec<Topic>, db: &Pool<r2d2_postgres::PostgresConnectio
     for topic in topics {
         let uniq = if topic.compacted.unwrap_or(false) {"UNIQUE"} else {""};
         conn.execute(format!(r#"
-            CREATE TABLE IF NOT EXISTS {} (
+            CREATE TABLE IF NOT EXISTS "{}" (
                 id bigserial PRIMARY KEY,
                 partition int NOT NULL,
                 ts timestamp NOT NULL,
@@ -101,7 +101,7 @@ fn handle_publish(header: &KafkaRequestHeader, topics: &Vec<KafkaMessageSet>, db
                 } else {
                     ""
                 };
-                conn.execute(format!("INSERT INTO {} (partition, ts, key, value) VALUES ($1, now(), $2, $3) {}",
+                conn.execute(format!("INSERT INTO \"{}\" (partition, ts, key, value) VALUES ($1, now(), $2, $3) {}",
                     topic.topic, uniq).as_str(),
                     &[&(*p_num as i32), &msg.key, &msg.value]).expect("Failed to insert to the DB");
             }
@@ -125,7 +125,7 @@ fn handle_fetch(header: &KafkaRequestHeader, topics: &Vec<(String, Vec<(u32, u64
         let mut partition_responses: Vec<(u64, Option<Vec<u8>>, Vec<u8>)> = Vec::new();
         let id = topic.1.get(0).expect("Need at least one partion in request").1 as i64;
         // TODO smart limit calculation
-        let rs = conn.query(format!("SELECT id, partition, key, value FROM {} WHERE id >= $1 LIMIT 25", topic.0).as_str(), &[&id]).expect("DB query failed");
+        let rs = conn.query(format!("SELECT id, partition, key, value FROM \"{}\" WHERE id >= $1 LIMIT 25", topic.0).as_str(), &[&id]).expect("DB query failed");
         for row in &rs {
             let offset: i64 = row.get(0);
             let key: Option<Vec<u8>> = row.get(2);
@@ -199,7 +199,7 @@ fn handle_offsets(header: &KafkaRequestHeader, topics: &Vec<(String, Vec<(u32, i
         let offset: i64 = match topic.1.get(0).map(|t| t.1).unwrap_or(-1) {
             -2 => 0, // Start from the beginning
             -1 => {  // Start from the current HEAD
-                let rs = conn.query(format!("SELECT max(id) + 1 FROM {}", topic.0).as_str(), &[]).expect("DB query failed");
+                let rs = conn.query(format!("SELECT max(id) + 1 FROM \"{}\"", topic.0).as_str(), &[]).expect("DB query failed");
                 rs.iter().next().map(|r| r.get(0)).unwrap_or(-1)
             },
             _ => -1 // TODO Support lookup by an actual timestamp

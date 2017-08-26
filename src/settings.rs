@@ -16,7 +16,7 @@ pub struct Settings {
     listen: Option<String>,
     pub threads: Option<usize>,
     pub database: Database,
-    pub topic: Vec<Topic>
+    pub topics: Vec<Topic>
 }
 
 impl Settings {

@@ -1,18 +1,20 @@
 listen = "0.0.0.0:9092"
 
+topics = [
+  {name = "test"},
+  {name = "test01"},
+  {name = "test02", compacted = true },
+  {name = "test03"} 
+]
+
 [database]
 url = "postgres://avorona:avorona@localhost"
 
 
-[[topic]]
-name= "test"
-
-[[topic]]
-name= "test01"
-
-[[topic]]
-name= "test02"
-compacted = true
-
-[[topic]]
-name= "test03"
+# Alternative syntax for topics
+# [[topics]]
+# name= "test01"
+# 
+# [[topics]]
+# name= "test02"
+# compacted = true
