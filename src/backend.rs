@@ -200,7 +200,7 @@ fn handle_offsets(header: &KafkaRequestHeader, topics: &Vec<(String, Vec<(u32, i
             -2 => 0, // Start from the beginning
             -1 => {  // Start from the current HEAD
                 let rs = conn.query(format!("SELECT max(id) + 1 FROM \"{}\"", topic.0).as_str(), &[]).expect("DB query failed");
-                rs.iter().next().map(|r| r.get(0)).unwrap_or(-1)
+                rs.iter().next().and_then(|r| r.get_opt(0)).unwrap_or(Ok(-1)).unwrap_or(-1)
             },
             _ => -1 // TODO Support lookup by an actual timestamp
         };
