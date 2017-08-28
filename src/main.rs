@@ -17,9 +17,9 @@ extern crate nom;
 extern crate bytes;
 
 // The logging library
-extern crate pretty_env_logger;
 #[macro_use]
 extern crate log;
+extern crate log4rs;
 
 // Needed to produce auxilary fields in Kafka responses
 extern crate hostname;
@@ -128,7 +128,7 @@ impl Service for KafkaService {
 }
 
 fn main() {
-    pretty_env_logger::init().unwrap();
+	log4rs::init_file("config/log4rs.yaml", Default::default()).expect("Failed to initialize logging");
     let cnf = Settings::new().expect("Failed to parse the configuration file");
     debug!("Using configuraion {:?}", cnf);
     let addr = cnf.listen().parse().expect("Please check the configured address and port number");

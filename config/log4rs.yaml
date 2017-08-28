@@ -1,0 +1,20 @@
+appenders:
+  stdout:
+    kind: console
+  requests:
+    kind: file
+    path: "log/requests.log"
+    encoder:
+      pattern: "{d} - {m}{n}"
+root:
+  level: warn
+  appenders:
+    - stdout
+loggers:
+  unclek:
+    level: info
+  unclek::backend:
+    level: info
+  unclek::writer:
+    level: info
+

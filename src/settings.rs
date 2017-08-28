@@ -8,7 +8,8 @@ pub struct Database {
 #[derive(Debug, Deserialize, Clone)]
 pub struct Topic {
     pub name: String,
-    pub compacted: Option<bool>
+    pub compacted: Option<bool>,
+    pub retention: Option<u64>
 }
 
 #[derive(Debug, Deserialize)]
@@ -22,7 +23,7 @@ pub struct Settings {
 impl Settings {
     pub fn new() -> Result<Self, ConfigError> {
         let mut s = Config::new();
-        s.merge(File::with_name("unclek").required(false))?;
+        s.merge(File::with_name("config/unclek").required(false))?;
         s.try_into()
     }
     

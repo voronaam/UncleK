@@ -4,7 +4,7 @@ topics = [
   {name = "test"},
   {name = "test01"},
   {name = "test02", compacted = true },
-  {name = "test03"} 
+  {name = "test03", retention = 10000} 
 ]
 
 [database]
