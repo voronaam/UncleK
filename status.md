@@ -10,9 +10,9 @@ Compatibility is aiming Apache Kafka 0.10.2.1
 - [x] Producing to topics
 - [x] Consuming from topics (HEAD, beginning, etc)
 - [x] Compacted topics
-- [ ] Data cleanup thread
+- [x] Data cleanup thread
 - [ ] Compression
-- [ ] Consumer groups. Currently any consumer connecting is being told it is the only consumer.
+- [ ] Consumer groups. Currently any consumer connecting is being told it is the only consumer in any group.
 
 # Client support
 

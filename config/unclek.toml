@@ -1,7 +1,17 @@
+# The ip and port to listen on.
+# 0.0.0.0 to listen on any IP
 listen = "0.0.0.0:9092"
+
+# Specify which hostname to return to the clients. Leave absent to use the result of hostname() call
+# hostname = "someserver"
 
 # How often the cleaner thread wakes up (ms)
 cleanup = 10000
+
+# Each topic may have those fields:
+# - name (mandatory)
+# - compacted (true/false, defatult false)
+# - retention (ms, the records old than this will be deleted)
 
 topics = [
   {name = "test"},
@@ -21,3 +31,7 @@ url = "postgres://avorona:avorona@localhost"
 # [[topics]]
 # name= "test02"
 # compacted = true
+#
+# [[topics]]
+# name= "test03"
+# retention = 10000

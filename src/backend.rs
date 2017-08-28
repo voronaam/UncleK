@@ -11,7 +11,8 @@ use settings::Topic;
 #[derive(Debug, Clone)]
 pub struct PgState {
     pub pool: Pool<r2d2_postgres::PostgresConnectionManager>,
-    pub topics: HashMap<String, Topic>
+    pub topics: HashMap<String, Topic>,
+    pub hostname: String,
 }
 
 pub fn initialize(cnf: &Settings) -> PgState {
@@ -26,7 +27,9 @@ pub fn initialize(cnf: &Settings) -> PgState {
     }
     PgState {
         pool: db_pool,
-        topics: map
+        topics: map,
+        hostname: cnf.get_hostname()
+        
     }
 }
 
@@ -49,11 +52,11 @@ fn create_tables(topics: &Vec<Topic>, db: &Pool<r2d2_postgres::PostgresConnectio
 
 pub fn handle_request(req: KafkaRequest, db: PgState) -> KafkaResponse {
     match req.req {
-        ApiRequest::Metadata { topics } => handle_metadata(&req.header, &topics),
+        ApiRequest::Metadata { topics } => handle_metadata(&req.header, &topics, &db),
         ApiRequest::Publish { topics, .. } => handle_publish(&req.header, &topics, &db),
         ApiRequest::Fetch { topics } => handle_fetch(&req.header, &topics, &db),
         ApiRequest::Versions => handle_versions(&req),
-        ApiRequest::FindGroupCoordinator => handle_find_coordinator(&req),
+        ApiRequest::FindGroupCoordinator => handle_find_coordinator(&req, &db),
         ApiRequest::JoinGroup { protocols, .. } => handle_join_group(&req.header, &protocols),
         ApiRequest::SyncGroup { assignments, .. } => handle_sync_group(&req.header, &assignments),
         ApiRequest::FetchOffsets { topics, .. } => handle_fetch_offsets(&req.header, &topics),
@@ -80,10 +83,10 @@ fn handle_unknown(req: &KafkaRequest) -> KafkaResponse {
     }
 }
 
-fn handle_metadata(header: &KafkaRequestHeader, topics: &Vec<String>) -> KafkaResponse {
+fn handle_metadata(header: &KafkaRequestHeader, topics: &Vec<String>, db: &PgState) -> KafkaResponse {
     KafkaResponse {
         header: KafkaResponseHeader::new(header.correlation_id),
-        req: ApiResponse::metadata_healthy(header.version, topics)
+        req: ApiResponse::metadata_healthy(header.version, topics, &db.hostname)
     }
 }
 
@@ -145,10 +148,12 @@ fn handle_fetch(header: &KafkaRequestHeader, topics: &Vec<(String, Vec<(u32, u64
     }
 }
 
-fn handle_find_coordinator(req: &KafkaRequest) -> KafkaResponse {
+fn handle_find_coordinator(req: &KafkaRequest, db: &PgState) -> KafkaResponse {
     KafkaResponse {
         header: KafkaResponseHeader::new(req.header.correlation_id),
-        req: ApiResponse::GroupCoordinatorResponse
+        req: ApiResponse::GroupCoordinatorResponse {
+            hostname: db.hostname.to_string()
+        }
     }
 }
 

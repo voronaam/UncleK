@@ -1,5 +1,4 @@
 use bytes::{BytesMut, BufMut, BigEndian};
-use hostname::get_hostname;
 use crc::crc32;
 use parser::TopicWithPartitions; // TODO move to common place
 
@@ -20,7 +19,9 @@ pub enum ApiResponse {
         version: i16,
         responses: Vec<(String, Vec<(u64, Option<Vec<u8>>, Vec<u8>)>)>
     },
-    GroupCoordinatorResponse,
+    GroupCoordinatorResponse {
+        hostname: String
+    },
     JoinGroupResponse {
         protocol: Option<(String, Option<Vec<u8>>)>
     },
@@ -76,7 +77,7 @@ pub fn to_bytes(msg: &KafkaResponse, out: &mut BytesMut) {
     let mut buf = BytesMut::with_capacity(1024);
     match msg.req {
         ApiResponse::VersionsResponse => versions_to_bytes(&mut buf),
-        ApiResponse::GroupCoordinatorResponse => coordinator_to_bytes(&mut buf),
+        ApiResponse::GroupCoordinatorResponse {ref hostname} => coordinator_to_bytes(hostname, &mut buf),
         ApiResponse::JoinGroupResponse {ref protocol} => join_group_to_bytes(protocol, &mut buf),
         ApiResponse::MetadataResponse { version: 2, ref cluster } => metadata_to_bytes(cluster, &mut buf),
         ApiResponse::PublishResponse { version: 2, ref responses } => publish_to_bytes(responses, &mut buf),
@@ -255,13 +256,13 @@ fn publish_to_bytes(msg: &Vec<(String, Vec<u32>)>, out: &mut BytesMut) {
 
 
 impl ApiResponse {
-    pub fn metadata_healthy(version: i16, topics: &Vec<String>) -> ApiResponse {
+    pub fn metadata_healthy(version: i16, topics: &Vec<String>, hostname: &String) -> ApiResponse {
         ApiResponse::MetadataResponse {
             version: version,
             cluster: ClusterMetadata {
                 brokers: vec![BrokerMetadata{
                     node_id: 0,
-                    host: get_hostname().expect("Failed to get localhost's hostname"),
+                    host: hostname.to_string(),
                     port: 9092, // TODO
                     rack: None
                 }],
@@ -273,10 +274,10 @@ impl ApiResponse {
     }
 }
 
-fn coordinator_to_bytes(out: &mut BytesMut) {
+fn coordinator_to_bytes(hostname: &String, out: &mut BytesMut) {
     out.put_u16::<BigEndian>(0); // error_code
     out.put_u32::<BigEndian>(0); // node_id
-    string_to_bytes(&get_hostname().expect("Failed to get localhost's hostname"), out);
+    string_to_bytes(hostname, out);
     out.put_u32::<BigEndian>(9092); // port
     
 }
