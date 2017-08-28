@@ -64,7 +64,7 @@ impl Decoder for KafkaCodec {
         if let IResult::Done(tail, body) = parser::size_header(&imm_buf[..]) {
             buf.split_to(imm_buf.len() - tail.len()); // A little bit funny way to determine how many bytes nom consumed
             debug!("Got a message of {} bytes", body.len());
-            if let IResult::Done(_, req) = parser::kafka_request(&body) {
+            if let IResult::Done(_, req) = parser::kafka_request(body) {
                 debug!("Parsed a message {:?}", req);
                 Ok(Some(req))
             } else {
@@ -104,7 +104,7 @@ impl Service for KafkaService {
         let timer = self.timer.clone();
         let f = self.thread_pool.spawn_fn(move || {
             debug!("Sending a request to the backend {:?}", req);
-            let response = backend::handle_request(req, db);
+            let response = backend::handle_request(req, &db);
             debug!("Response from the backend {:?}", response);
             let delay = if response.is_empty() {1000} else {0};
             timer.sleep(Duration::from_millis(delay))
@@ -114,7 +114,7 @@ impl Service for KafkaService {
     }
 }
 
-fn serve<S>(cnf: &Settings, svc: KafkaService, factory: S) -> io::Result<()>
+fn serve<S>(cnf: &Settings, svc: &KafkaService, factory: S) -> io::Result<()>
     where S: NewService<Request = KafkaRequest,
                         Response = KafkaResponse,
                         Error = io::Error> + 'static
@@ -141,7 +141,7 @@ fn serve<S>(cnf: &Settings, svc: KafkaService, factory: S) -> io::Result<()>
 			.for_each(|_| {
 				let db_pool = svc.db_pool.clone();
 				svc.thread_pool.spawn_fn(move || {
-					backend::cleanup(db_pool);
+					backend::cleanup(&db_pool);
 					Ok(())
 				})
 			})
@@ -166,7 +166,7 @@ fn main() {
         timer: Timer::default(),
     };
 	
-    if let Err(e) = serve(&cnf, kafka_service.clone(), move || Ok(kafka_service.clone())) {
+    if let Err(e) = serve(&cnf, &kafka_service.clone(), move || Ok(kafka_service.clone())) {
         error!("UncleK failed with {}", e);
     };
 }

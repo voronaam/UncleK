@@ -134,28 +134,29 @@ fn error_to_bytes(out: &mut BytesMut) {
     out.put_u16::<BigEndian>(55); // OPERATION_NOT_ATTEMPTED
 }
 
-fn string_to_bytes(msg: &String, out: &mut BytesMut) {
+fn string_to_bytes(msg: &str, out: &mut BytesMut) {
     let b = msg.as_bytes();
     out.put_u16::<BigEndian>(b.len() as u16);
     out.put(b);
 }
 
 fn opt_string_to_bytes(msg: &Option<String>, out: &mut BytesMut) {
-    match msg {
-        &Some(ref s) => string_to_bytes(s, out),
-        &None    => out.put_i16::<BigEndian>(-1)
+    match *msg {
+        Some(ref s) => string_to_bytes(s, out),
+        None    => out.put_i16::<BigEndian>(-1)
     }
 }
 
 fn opt_vec_to_bytes(msg: &Option<Vec<u8>>, out: &mut BytesMut) {
-    match msg {
-        &None    => out.put_u32::<BigEndian>(0),
-        &Some(ref a) => {
+    match *msg {
+        None    => out.put_u32::<BigEndian>(0),
+        Some(ref a) => {
             out.put_u32::<BigEndian>(a.len() as u32);
             out.put(a);
         }
     }
 }
+
 fn metadata_to_bytes(msg: &ClusterMetadata, out: &mut BytesMut) {
     out.put_u32::<BigEndian>(msg.brokers.len() as u32);
     for b in &msg.brokers {
@@ -274,7 +275,7 @@ impl ApiResponse {
     }
 }
 
-fn coordinator_to_bytes(hostname: &String, out: &mut BytesMut) {
+fn coordinator_to_bytes(hostname: &str, out: &mut BytesMut) {
     out.put_u16::<BigEndian>(0); // error_code
     out.put_u32::<BigEndian>(0); // node_id
     string_to_bytes(hostname, out);
@@ -285,29 +286,29 @@ fn coordinator_to_bytes(hostname: &String, out: &mut BytesMut) {
 fn join_group_to_bytes(protocol: &Option<(String, Option<Vec<u8>>)>, out: &mut BytesMut) {
     out.put_u16::<BigEndian>(0); // error_code
     out.put_u32::<BigEndian>(0); // generation_id
-    match protocol {
-        &Some((ref s, _)) => string_to_bytes(s, out),
-        &None             => out.put_i16::<BigEndian>(-1)
+    match *protocol {
+        Some((ref s, _)) => string_to_bytes(s, out),
+        None             => out.put_i16::<BigEndian>(-1)
     }
     string_to_bytes(&String::from(""), out);   // leader_id
     string_to_bytes(&String::from(""), out);   // member_id
     // members
-    match protocol {
-        &Some((ref s, ref a)) => {
+    match *protocol {
+        Some((ref s, ref a)) => {
             out.put_u32::<BigEndian>(1);
             string_to_bytes(s, out);   // member_id
             opt_vec_to_bytes(a, out);  // metadata
         },
-        &None => out.put_u32::<BigEndian>(0)
+        None => out.put_u32::<BigEndian>(0)
     }
 
 }
 
 fn sync_group_to_bytes(assignment: &Option<Vec<u8>>, out: &mut BytesMut) {
     out.put_u16::<BigEndian>(0); // error_code
-    match assignment {
-        &None => out.put_u32::<BigEndian>(0),
-        &Some(ref a) => {
+    match *assignment {
+        None => out.put_u32::<BigEndian>(0),
+        Some(ref a) => {
             out.put_u32::<BigEndian>(a.len() as u32);
             out.put(a);
         }
@@ -360,9 +361,9 @@ fn heartbeat_to_bytes(out: &mut BytesMut) {
 }
 
 fn opt_size(value: &Option<Vec<u8>>) -> usize {
-    match value {
-        &None => 0,
-        &Some(ref a) => a.len()
+    match *value {
+        None => 0,
+        Some(ref a) => a.len()
     }
 }
 
@@ -371,8 +372,8 @@ fn records_to_bytes(records: &Vec<(u64, Option<Vec<u8>>, Vec<u8>)>, out: &mut By
         out.put_u64::<BigEndian>(r.0);
         out.put_u32::<BigEndian>((22 + opt_size(&r.1) + r.2.len()) as u32);
         let mut buf = BytesMut::with_capacity(18 + opt_size(&r.1) + r.2.len());
-        buf.put_u8(01);  // magic
-        buf.put_u8(00);  // attributes
+        buf.put_u8(0x01);  // magic
+        buf.put_u8(0x00);  // attributes
         buf.put_u64::<BigEndian>(0); // timestamp
         opt_vec_to_bytes(&r.1, &mut buf); // key
         buf.put_u32::<BigEndian>(r.2.len() as u32); // value len

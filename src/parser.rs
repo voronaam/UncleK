@@ -101,7 +101,7 @@ named!(opt_kafka_string<&[u8], Option<String> >,
 named!(opt_kafka_bytes<&[u8], Option<Vec<u8> > >,
   alt!(
     tag!([0xff, 0xff, 0xff, 0xff]) => { |_| None } |
-    length_bytes!(be_u32)          => { |b:&[u8]| Some(b.iter().cloned().collect()) }
+    length_bytes!(be_u32)          => { |b:&[u8]| Some(b.to_vec()) }
   )
 );
 

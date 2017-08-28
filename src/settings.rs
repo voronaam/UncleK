@@ -38,9 +38,9 @@ impl Settings {
 	}
 	
 	pub fn get_hostname(&self) -> String {
-		match &self.hostname {
-			&Some(ref v) => v.to_string(),
-			&None        => get_hostname().expect("Failed to get localhost's hostname")
+		match self.hostname {
+			Some(ref v) => v.to_string(),
+			None        => get_hostname().expect("Failed to get localhost's hostname")
 		}
 	}
 }

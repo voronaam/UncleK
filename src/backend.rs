@@ -50,17 +50,17 @@ fn create_tables(topics: &Vec<Topic>, db: &Pool<r2d2_postgres::PostgresConnectio
     }
 }
 
-pub fn handle_request(req: KafkaRequest, db: PgState) -> KafkaResponse {
+pub fn handle_request(req: KafkaRequest, db: &PgState) -> KafkaResponse {
     match req.req {
-        ApiRequest::Metadata { topics } => handle_metadata(&req.header, &topics, &db),
-        ApiRequest::Publish { topics, .. } => handle_publish(&req.header, &topics, &db),
-        ApiRequest::Fetch { topics } => handle_fetch(&req.header, &topics, &db),
+        ApiRequest::Metadata { topics } => handle_metadata(&req.header, &topics, db),
+        ApiRequest::Publish { topics, .. } => handle_publish(&req.header, &topics, db),
+        ApiRequest::Fetch { topics } => handle_fetch(&req.header, &topics, db),
         ApiRequest::Versions => handle_versions(&req),
-        ApiRequest::FindGroupCoordinator => handle_find_coordinator(&req, &db),
+        ApiRequest::FindGroupCoordinator => handle_find_coordinator(&req, db),
         ApiRequest::JoinGroup { protocols, .. } => handle_join_group(&req.header, &protocols),
         ApiRequest::SyncGroup { assignments, .. } => handle_sync_group(&req.header, &assignments),
         ApiRequest::FetchOffsets { topics, .. } => handle_fetch_offsets(&req.header, &topics),
-        ApiRequest::Offsets { topics } => handle_offsets(&req.header, &topics, &db),
+        ApiRequest::Offsets { topics } => handle_offsets(&req.header, &topics, db),
         ApiRequest::OffsetCommit { topics } => handle_offset_commit(&req.header, &topics),
         ApiRequest::Heartbeat => handle_heartbeat(&req),
         ApiRequest::LeaveGroup => handle_leave_group(&req),
@@ -248,7 +248,7 @@ fn handle_leave_group(req: &KafkaRequest) -> KafkaResponse {
     }
 }
 
-pub fn cleanup(db: PgState) {
+pub fn cleanup(db: &PgState) {
     debug!("Cleanup thread is awake");
     let conn = db.pool.get().expect("Could not get a DB connection");
     for (_, topic) in &db.topics {
