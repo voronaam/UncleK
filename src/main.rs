@@ -87,6 +87,7 @@ impl Encoder for KafkaCodec {
     }
 }
 
+#[derive(Clone)]
 pub struct KafkaService {
     thread_pool: CpuPool,
     db_pool: backend::PgState,
@@ -114,7 +115,7 @@ impl Service for KafkaService {
     }
 }
 
-fn serve<S>(cnf: &Settings, s: S) -> io::Result<()>
+fn serve<S>(cnf: &Settings, svc: KafkaService, factory: S) -> io::Result<()>
     where S: NewService<Request = KafkaRequest,
                         Response = KafkaResponse,
                         Error = io::Error> + 'static
@@ -126,15 +127,33 @@ fn serve<S>(cnf: &Settings, s: S) -> io::Result<()>
     let connections = listener.incoming();
     let server = connections.for_each(move |(socket, _peer_addr)| {
         let (writer, reader) = socket.framed(KafkaCodec).split();        
-        let service = s.new_service()?;
+        let service = factory.new_service()?;
         let responses = reader.and_then(move |req| service.call(req));
         let server = writer.send_all(responses)
             .then(|_| Ok(()));
         handle.spawn(server);
         Ok(())
     });
-
-    core.run(server)
+    
+    if let Some(freq) = cnf.cleanup {
+		// TODO still thinking if we need a separate event loop for this one
+		let timer = Timer::default();
+		let t = timer.interval(Duration::from_millis(freq))
+			.for_each(|_| {
+				let db_pool = svc.db_pool.clone();
+				svc.thread_pool.spawn_fn(move || {
+					backend::cleanup(db_pool);
+					Ok(())
+				})
+			})
+			.map_err(|_| io::Error::new(io::ErrorKind::Other, "Timer error"));
+		let combined = server.select(t)
+			.map(|(win, _)| win)
+			.map_err(|(e, _)| e);
+		core.run(combined)
+	} else {
+		core.run(server)
+	}
 }
 
 fn main() {
@@ -142,16 +161,13 @@ fn main() {
     let cnf = Settings::new().expect("Failed to parse the configuration file");
     debug!("Using configuraion {:?}", cnf);
 
+	let kafka_service = KafkaService {
+        thread_pool: CpuPool::new(cnf.threads.unwrap_or(100)),
+        db_pool: backend::initialize(&cnf),
+        timer: Timer::default(),
+    };
 	
-    let thread_pool = CpuPool::new(cnf.threads.unwrap_or(100));
-    let timer = Timer::default();
-    let db_pool = backend::initialize(&cnf);
-    
-    if let Err(e) = serve(&cnf, move || Ok(KafkaService {
-        thread_pool: thread_pool.clone(),
-        db_pool: db_pool.clone(),
-        timer: timer.clone()
-    })) {
+    if let Err(e) = serve(&cnf, kafka_service.clone(), move || Ok(kafka_service.clone())) {
         error!("UncleK failed with {}", e);
     };
 }

@@ -34,6 +34,7 @@ fn create_tables(topics: &Vec<Topic>, db: &Pool<r2d2_postgres::PostgresConnectio
     let conn = db.get().expect("Could not get a DB connection");
     for topic in topics {
         let uniq = if topic.compacted.unwrap_or(false) {"UNIQUE"} else {""};
+        // TODO if topic has a defined retention we may need an index on "ts"
         conn.execute(format!(r#"
             CREATE TABLE IF NOT EXISTS "{}" (
                 id bigserial PRIMARY KEY,
@@ -240,4 +241,18 @@ fn handle_leave_group(req: &KafkaRequest) -> KafkaResponse {
         header: KafkaResponseHeader::new(req.header.correlation_id),
         req: ApiResponse::LeaveGroupResponse
     }
+}
+
+pub fn cleanup(db: PgState) {
+    debug!("Cleanup thread is awake");
+    let conn = db.pool.get().expect("Could not get a DB connection");
+    for (_, topic) in &db.topics {
+        if let Some(retention) = topic.retention {
+            debug!("Cleaning up topic {}", topic.name);
+            conn.execute(format!("DELETE FROM \"{}\" WHERE ts < now() - $1::text::interval",
+                    topic.name).as_str(),
+                    &[&format!("{}ms", retention)]).expect("Failed to delete from the DB");
+        }
+    }
+    debug!("Cleanup thread is sleeping");
 }

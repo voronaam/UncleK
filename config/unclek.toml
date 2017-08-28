@@ -1,5 +1,8 @@
 listen = "0.0.0.0:9092"
 
+# How often the cleaner thread wakes up (ms)
+cleanup = 10000
+
 topics = [
   {name = "test"},
   {name = "test01"},

@@ -15,6 +15,7 @@ pub struct Topic {
 #[derive(Debug, Deserialize)]
 pub struct Settings {
     listen: Option<String>,
+    pub cleanup: Option<u64>,
     pub threads: Option<usize>,
     pub database: Database,
     pub topics: Vec<Topic>
