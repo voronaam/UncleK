@@ -2,7 +2,7 @@
 extern crate futures;
 extern crate futures_cpupool;
 extern crate tokio_io;
-extern crate tokio_proto;
+extern crate tokio_core;
 extern crate tokio_service;
 extern crate tokio_timer;
 
@@ -36,14 +36,13 @@ use std::str;
 use std::time::Duration;
 use bytes::BytesMut;
 use tokio_io::codec::{Encoder, Decoder};
-use tokio_proto::pipeline::ServerProto;
-use tokio_io::{AsyncRead, AsyncWrite};
-use tokio_io::codec::Framed;
-use tokio_service::Service;
+use tokio_io::AsyncRead;
+use tokio_core::reactor::Core;
+use tokio_core::net::TcpListener;
+use tokio_service::{Service, NewService};
+use futures::{future, Future, Stream, Sink, BoxFuture};
 use tokio_timer::Timer;
-use futures::{future, Future, BoxFuture};
 use futures_cpupool::CpuPool;
-use tokio_proto::TcpServer;
 use nom::IResult;
 
 mod settings;
@@ -88,18 +87,6 @@ impl Encoder for KafkaCodec {
     }
 }
 
-pub struct KafkaProto;
-
-impl<T: AsyncRead + AsyncWrite + 'static> ServerProto<T> for KafkaProto {
-    type Request = KafkaRequest;
-    type Response = KafkaResponse;
-    type Transport = Framed<T, KafkaCodec>;
-    type BindTransport = Result<Self::Transport, io::Error>;
-    fn bind_transport(&self, io: T) -> Self::BindTransport {
-        Ok(io.framed(KafkaCodec))
-    }
-}
-
 pub struct KafkaService {
     thread_pool: CpuPool,
     db_pool: backend::PgState,
@@ -127,21 +114,44 @@ impl Service for KafkaService {
     }
 }
 
+fn serve<S>(cnf: &Settings, s: S) -> io::Result<()>
+    where S: NewService<Request = KafkaRequest,
+                        Response = KafkaResponse,
+                        Error = io::Error> + 'static
+{
+    let addr = cnf.listen().parse().expect("Please check the configured address and port number");
+	let mut core = Core::new().unwrap();
+	let handle = core.handle();
+	let listener = TcpListener::bind(&addr, &core.handle()).unwrap();
+    let connections = listener.incoming();
+    let server = connections.for_each(move |(socket, _peer_addr)| {
+        let (writer, reader) = socket.framed(KafkaCodec).split();        
+        let service = s.new_service()?;
+        let responses = reader.and_then(move |req| service.call(req));
+        let server = writer.send_all(responses)
+            .then(|_| Ok(()));
+        handle.spawn(server);
+        Ok(())
+    });
+
+    core.run(server)
+}
+
 fn main() {
 	log4rs::init_file("config/log4rs.yaml", Default::default()).expect("Failed to initialize logging");
     let cnf = Settings::new().expect("Failed to parse the configuration file");
     debug!("Using configuraion {:?}", cnf);
-    let addr = cnf.listen().parse().expect("Please check the configured address and port number");
-    let server = TcpServer::new(KafkaProto, addr);
 
+	
     let thread_pool = CpuPool::new(cnf.threads.unwrap_or(100));
     let timer = Timer::default();
-    
     let db_pool = backend::initialize(&cnf);
-
-    server.serve(move || Ok(KafkaService {
+    
+    if let Err(e) = serve(&cnf, move || Ok(KafkaService {
         thread_pool: thread_pool.clone(),
         db_pool: db_pool.clone(),
         timer: timer.clone()
-    }));
+    })) {
+        error!("UncleK failed with {}", e);
+    };
 }
