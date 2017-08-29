@@ -149,8 +149,10 @@ fn serve<S>(cnf: &Settings, svc: &KafkaService, factory: S) -> io::Result<()>
 		let combined = server.select(t)
 			.map(|(win, _)| win)
 			.map_err(|(e, _)| e);
+		info!("Started the main event loop with the listener and cleanup");
 		core.run(combined)
 	} else {
+		info!("Started the main event loop with the listener");
 		core.run(server)
 	}
 }

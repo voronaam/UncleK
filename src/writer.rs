@@ -91,6 +91,7 @@ pub fn to_bytes(msg: &KafkaResponse, out: &mut BytesMut) {
         ApiResponse::LeaveGroupResponse => heartbeat_to_bytes(&mut buf), // version 0 we support now is the same response as heartbeat
         _ => error_to_bytes(&mut buf)
     }
+    out.reserve(8);
     out.put_u32::<BigEndian>(buf.len() as u32 + 4); // 4 is the length of the size correlation id.
     out.put_i32::<BigEndian>(msg.header.correlation_id);
     out.extend(buf.take());
