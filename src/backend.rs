@@ -4,9 +4,17 @@ use r2d2_postgres;
 use r2d2;
 use r2d2::Pool;
 use r2d2_postgres::{TlsMode, PostgresConnectionManager};
+use pg_async::{Cluster, PgOperation, PgQueryPiece};
+use pg_async::PgQueryPiece::{Plain, Literal, Bytea};
 use std::collections::HashMap;
 use settings::Settings;
 use settings::Topic;
+
+lazy_static! {
+    static ref PG_CLUSTER: Cluster = {
+        Cluster::new().expect("!Cluster")
+    };
+}
 
 #[derive(Debug, Clone)]
 pub struct PgState {
@@ -17,7 +25,7 @@ pub struct PgState {
 
 pub fn initialize(cnf: &Settings) -> PgState {
     let db_url = cnf.database.url.to_string();
-    let db_config = r2d2::Config::default();
+    let db_config = r2d2::Config::builder().pool_size(10).build();
     let db_manager = PostgresConnectionManager::new(db_url, TlsMode::None).unwrap();
     let db_pool = r2d2::Pool::new(db_config, db_manager).unwrap();
     create_tables(&cnf.topics, &db_pool);
@@ -25,6 +33,7 @@ pub fn initialize(cnf: &Settings) -> PgState {
     for topic in &cnf.topics {
         map.insert(topic.name.to_string(), topic.clone());
     }
+    PG_CLUSTER.connect (cnf.database.url.to_string(), 1) .expect ("!connect");
     PgState {
         pool: db_pool,
         topics: map,
@@ -90,8 +99,15 @@ fn handle_metadata(header: &KafkaRequestHeader, topics: &Vec<String>, db: &PgSta
     }
 }
 
+fn bytea_to_pg(b: &Option<Vec<u8>>) -> Vec<PgQueryPiece> {
+    match b {
+        &Some(ref bytes) => vec![Plain (fomat!("'")), Bytea(bytes.clone()), Plain (fomat!("'"))],
+        &None => vec![Plain (fomat! ("null"))]
+    }
+}
+
 fn handle_publish(header: &KafkaRequestHeader, topics: &Vec<KafkaMessageSet>, db: &PgState) -> KafkaResponse {
-    let conn = db.pool.get().expect("Could not get a DB connection");
+    // let conn = db.pool.get().expect("Could not get a DB connection");
     let mut responses: Vec<(String, Vec<u32>)> = Vec::new();
     for topic in topics {
         let mut partition_responses: Vec<u32> = Vec::new();
@@ -105,9 +121,24 @@ fn handle_publish(header: &KafkaRequestHeader, topics: &Vec<KafkaMessageSet>, db
                 } else {
                     ""
                 };
+                // 1, now(), null, null) {}
+                // let query = format!("INSERT INTO \"{}\" (partition, ts, key, value) VALUES (", topic.topic).to_string();
+                let mut query = vec! [Plain (fomat! ("INSERT INTO " (topic.topic) " (partition, ts, key, value) VALUES (" (p_num) ", now(), "))];
+                query.append(&mut bytea_to_pg(&msg.key));
+                query.push(Plain(fomat! (", ")));
+                query.append(&mut bytea_to_pg(&msg.value));
+                query.push(Plain(fomat! (") ")));
+                query.push(Plain(uniq.to_string()));
+                PG_CLUSTER.execute(PgOperation {
+                    statements: 1,
+                    query_pieces: query,
+                    ..Default::default()
+                });
+                /*
                 conn.execute(format!("INSERT INTO \"{}\" (partition, ts, key, value) VALUES ($1, now(), $2, $3) {}",
                     topic.topic, uniq).as_str(),
                     &[&(*p_num as i32), &msg.key, &msg.value]).expect("Failed to insert to the DB");
+                */
             }
             partition_responses.push(*p_num);
         }
