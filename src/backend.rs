@@ -4,13 +4,21 @@ use r2d2_postgres;
 use r2d2;
 use r2d2::Pool;
 use r2d2_postgres::{TlsMode, PostgresConnectionManager};
+use cdrs::connection_manager::ConnectionManager;
+use cdrs::client::CDRS;
+use cdrs::authenticators::NoneAuthenticator;
+use cdrs::transport::TransportTcp;
+use cdrs::compression::Compression;
+use cdrs::query::{QueryBuilder, QueryParamsBuilder};
+use cdrs::types::value::{Value, Bytes};
 use std::collections::HashMap;
 use settings::Settings;
 use settings::Topic;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct PgState {
     pub pool: Pool<r2d2_postgres::PostgresConnectionManager>,
+    pub cassandra_pool: Pool<ConnectionManager<NoneAuthenticator, TransportTcp>>,
     pub topics: HashMap<String, Topic>,
     pub hostname: String,
 }
@@ -25,8 +33,17 @@ pub fn initialize(cnf: &Settings) -> PgState {
     for topic in &cnf.topics {
         map.insert(topic.name.to_string(), topic.clone());
     }
+    let config = r2d2::Config::builder()
+        .pool_size(15)
+        .build();
+    let addr = "127.0.0.1:9042";
+    let transport = TransportTcp::new(addr).unwrap();
+    let authenticator = NoneAuthenticator;
+    let manager = ConnectionManager::new(transport, authenticator, Compression::None);
+    let cassandra_pool = r2d2::Pool::new(config, manager).unwrap();
     PgState {
         pool: db_pool,
+        cassandra_pool: cassandra_pool,
         topics: map,
         hostname: cnf.get_hostname()
         
@@ -90,8 +107,23 @@ fn handle_metadata(header: &KafkaRequestHeader, topics: &Vec<String>, db: &PgSta
     }
 }
 
+const CREATE_KEY_SPACE: &'static str = "CREATE KEYSPACE IF NOT EXISTS uncle_ks WITH REPLICATION = { \
+                                        'class' : 'SimpleStrategy', 'replication_factor' : 1 };";
+
+const CREATE_TABLE: &'static str = "CREATE TABLE IF NOT EXISTS uncle_ks.test (partition int PRIMARY KEY, key blob, value blob);";
+
+const INSERT_STR: &'static str = "INSERT INTO uncle_ks.test (partition, key, value) \
+                                  VALUES (?, ?, ?);";
+
+// Void performance: 5000000 records sent, 76090.761060 records/sec (72.57 MB/sec), 400.84 ms avg latency, 666.00 ms max latency, 394 ms 50th, 435 ms 95th, 548 ms 99th, 628 ms 99.9th.
 fn handle_publish(header: &KafkaRequestHeader, topics: &Vec<KafkaMessageSet>, db: &PgState) -> KafkaResponse {
-    let conn = db.pool.get().expect("Could not get a DB connection");
+    let mut conn = db.cassandra_pool.get().expect("Could not get a Cassandra connection");
+    /*
+    let ceate_q = QueryBuilder::new(CREATE_KEY_SPACE).finalize();
+    conn.query(ceate_q, false, false).unwrap();
+    let ceate_table = QueryBuilder::new(CREATE_TABLE).finalize();
+    conn.query(ceate_table, false, false).unwrap();
+    */
     let mut responses: Vec<(String, Vec<u32>)> = Vec::new();
     for topic in topics {
         let mut partition_responses: Vec<u32> = Vec::new();
@@ -99,15 +131,19 @@ fn handle_publish(header: &KafkaRequestHeader, topics: &Vec<KafkaMessageSet>, db
             let &(ref p_num, ref values) = partition;
             for msg in values {
                 debug!("Actually saving message {:?}:{:?} to topic {:?} partition {:?}", msg.key, msg.value, topic.topic, p_num);
-                let uniq = if db.topics.get(&topic.topic).and_then(|t| t.compacted).unwrap_or(false) {
-                    "ON CONFLICT (key) DO UPDATE SET value=$3, ts=now()"
-                    // We can also easily update id to the next seq value. But this may have performance implications (index rebuild)
-                } else {
-                    ""
+                let k = match msg.key {
+                    None => vec![],
+                    Some(ref a) => a.clone()
                 };
-                conn.execute(format!("INSERT INTO \"{}\" (partition, ts, key, value) VALUES ($1, now(), $2, $3) {}",
-                    topic.topic, uniq).as_str(),
-                    &[&(*p_num as i32), &msg.key, &msg.value]).expect("Failed to insert to the DB");
+                let v = match msg.value {
+                    None => vec![],
+                    Some(ref a) => a.clone()
+                };
+                let values_s: Vec<Value> = vec![(*p_num as i32).into(),
+                                                Bytes::new(k).into(),
+                                                Bytes::new(v).into()];
+                let query = QueryBuilder::new(INSERT_STR).values(values_s).finalize();
+                conn.query(query, false, false).unwrap();
             }
             partition_responses.push(*p_num);
         }
