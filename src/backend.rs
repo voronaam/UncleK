@@ -4,21 +4,17 @@ use r2d2_postgres;
 use r2d2;
 use r2d2::Pool;
 use r2d2_postgres::{TlsMode, PostgresConnectionManager};
-use cdrs::connection_manager::ConnectionManager;
-use cdrs::client::CDRS;
-use cdrs::authenticators::NoneAuthenticator;
-use cdrs::transport::TransportTcp;
-use cdrs::compression::Compression;
-use cdrs::query::{QueryBuilder, QueryParamsBuilder};
-use cdrs::types::value::{Value, Bytes};
 use std::collections::HashMap;
 use settings::Settings;
 use settings::Topic;
 
+use cassandra::{Cluster, ContactPoints};
+
+
 #[derive(Clone)]
 pub struct PgState {
     pub pool: Pool<r2d2_postgres::PostgresConnectionManager>,
-    pub cassandra_pool: Pool<ConnectionManager<NoneAuthenticator, TransportTcp>>,
+    pub cassandra_pool: u8,
     pub topics: HashMap<String, Topic>,
     pub hostname: String,
 }
@@ -33,17 +29,13 @@ pub fn initialize(cnf: &Settings) -> PgState {
     for topic in &cnf.topics {
         map.insert(topic.name.to_string(), topic.clone());
     }
-    let config = r2d2::Config::builder()
-        .pool_size(15)
-        .build();
-    let addr = "127.0.0.1:9042";
-    let transport = TransportTcp::new(addr).unwrap();
-    let authenticator = NoneAuthenticator;
-    let manager = ConnectionManager::new(transport, authenticator, Compression::None);
-    let cassandra_pool = r2d2::Pool::new(config, manager).unwrap();
+
+    let mut cluster = Cluster::default();
+    cluster.set_contact_points(ContactPoints::from_str("127.0.0.1").unwrap()).unwrap();
+
     PgState {
         pool: db_pool,
-        cassandra_pool: cassandra_pool,
+        cassandra_pool: cluster,
         topics: map,
         hostname: cnf.get_hostname()
         

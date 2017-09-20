@@ -9,8 +9,9 @@ extern crate tokio_timer;
 // DB pool
 extern crate r2d2;
 extern crate r2d2_postgres;
-extern crate cdrs;
-
+#[macro_use(stmt)]
+extern crate cassandra;
+    
 // Parser for the requests
 #[macro_use]
 extern crate nom;
