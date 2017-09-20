@@ -1,43 +1,57 @@
 use parser::*;
 use writer::*;
-use r2d2_postgres;
-use r2d2;
-use r2d2::Pool;
-use r2d2_postgres::{TlsMode, PostgresConnectionManager};
+use utils::net::config;
+use utils::net::poolmgr;
+use std::sync::Arc;
 use std::collections::HashMap;
 use settings::Settings;
 use settings::Topic;
+use std::fmt;
+use std::io::Write;
+
+
+#[derive(Clone)]
+pub struct Connection {
+    pub tcp: Arc<poolmgr::ConnectionPool>,
+}
+
+impl fmt::Debug for Connection {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "Connection")
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct PgState {
-    pub pool: Pool<r2d2_postgres::PostgresConnectionManager>,
+    pub pool: Connection,
     pub topics: HashMap<String, Topic>,
     pub hostname: String,
 }
 
 pub fn initialize(cnf: &Settings) -> PgState {
-    let db_url = cnf.database.url.to_string();
-    let db_config = r2d2::Config::default();
-    let db_manager = PostgresConnectionManager::new(db_url, TlsMode::None).unwrap();
-    let db_pool = r2d2::Pool::new(db_config, db_manager).unwrap();
-    create_tables(&cnf.topics, &db_pool);
+    // let db_url = cnf.database.url.to_string();
+    let mut cfg : config::Config = Default::default();
+    cfg.port= Some(1234);
+    cfg.server = Some("localhost".to_string());
+    let mut pool = poolmgr::ConnectionPool::new(2, 20, true, &cfg);
+    let pool = Arc::new(pool);
     let mut map = HashMap::new();
     for topic in &cnf.topics {
         map.insert(topic.name.to_string(), topic.clone());
     }
     PgState {
-        pool: db_pool,
+        pool: Connection {tcp: pool},
         topics: map,
         hostname: cnf.get_hostname()
         
     }
 }
 
-fn create_tables(topics: &Vec<Topic>, db: &Pool<r2d2_postgres::PostgresConnectionManager>) {
-    let conn = db.get().expect("Could not get a DB connection");
+fn create_tables(topics: &Vec<Topic>, pool: &Connection) {
+	let mut conn = pool.tcp.acquire().expect("Could not get a DB connection");
     for topic in topics {
+		/*
         let uniq = if topic.compacted.unwrap_or(false) {"UNIQUE"} else {""};
-        // TODO if topic has a defined retention we may need an index on "ts"
         conn.execute(format!(r#"
             CREATE TABLE IF NOT EXISTS "{}" (
                 id bigserial PRIMARY KEY,
@@ -47,7 +61,9 @@ fn create_tables(topics: &Vec<Topic>, db: &Pool<r2d2_postgres::PostgresConnectio
                 value BYTEA)
             "#,
             topic.name, uniq).as_str(), &[]).expect("Failed to create DB table");
+        */
     }
+    pool.tcp.release(conn);
 }
 
 pub fn handle_request(req: KafkaRequest, db: &PgState) -> KafkaResponse {
@@ -91,7 +107,7 @@ fn handle_metadata(header: &KafkaRequestHeader, topics: &Vec<String>, db: &PgSta
 }
 
 fn handle_publish(header: &KafkaRequestHeader, topics: &Vec<KafkaMessageSet>, db: &PgState) -> KafkaResponse {
-    let conn = db.pool.get().expect("Could not get a DB connection");
+	let mut conn = db.pool.tcp.acquire().expect("Could not get a DB connection");
     let mut responses: Vec<(String, Vec<u32>)> = Vec::new();
     for topic in topics {
         let mut partition_responses: Vec<u32> = Vec::new();
@@ -99,6 +115,11 @@ fn handle_publish(header: &KafkaRequestHeader, topics: &Vec<KafkaMessageSet>, db
             let &(ref p_num, ref values) = partition;
             for msg in values {
                 debug!("Actually saving message {:?}:{:?} to topic {:?} partition {:?}", msg.key, msg.value, topic.topic, p_num);
+                if let Some(ref buf) = msg.value {
+					conn.writer.write(&buf[..]).unwrap();
+					conn.writer.flush().unwrap();
+				}
+                /*
                 let uniq = if db.topics.get(&topic.topic).and_then(|t| t.compacted).unwrap_or(false) {
                     "ON CONFLICT (key) DO UPDATE SET value=$3, ts=now()"
                     // We can also easily update id to the next seq value. But this may have performance implications (index rebuild)
@@ -108,11 +129,13 @@ fn handle_publish(header: &KafkaRequestHeader, topics: &Vec<KafkaMessageSet>, db
                 conn.execute(format!("INSERT INTO \"{}\" (partition, ts, key, value) VALUES ($1, now(), $2, $3) {}",
                     topic.topic, uniq).as_str(),
                     &[&(*p_num as i32), &msg.key, &msg.value]).expect("Failed to insert to the DB");
+                */
             }
             partition_responses.push(*p_num);
         }
         responses.push((topic.topic.to_string(), partition_responses));
     }
+    db.pool.tcp.release(conn);
     KafkaResponse {
         header: KafkaResponseHeader::new(header.correlation_id),
         req: ApiResponse::PublishResponse {
@@ -123,12 +146,13 @@ fn handle_publish(header: &KafkaRequestHeader, topics: &Vec<KafkaMessageSet>, db
 }
 
 fn handle_fetch(header: &KafkaRequestHeader, topics: &Vec<(String, Vec<(u32, u64)>)>, db: &PgState) -> KafkaResponse {
-    let conn = db.pool.get().expect("Could not get a DB connection");
+    let conn = db.pool.tcp.acquire().expect("Could not get a DB connection");
     let mut responses: Vec<(String, Vec<(u64, Option<Vec<u8>>, Vec<u8>)>)> = Vec::new();
     for topic in topics {
         let mut partition_responses: Vec<(u64, Option<Vec<u8>>, Vec<u8>)> = Vec::new();
         let id = topic.1.get(0).expect("Need at least one partion in request").1 as i64;
         // TODO smart limit calculation
+        /*
         let rs = conn.query(format!("SELECT id, partition, key, value FROM \"{}\" WHERE id >= $1 LIMIT 25", topic.0).as_str(), &[&id]).expect("DB query failed");
         for row in &rs {
             let offset: i64 = row.get(0);
@@ -136,8 +160,10 @@ fn handle_fetch(header: &KafkaRequestHeader, topics: &Vec<(String, Vec<(u32, u64
             let value: Vec<u8> = row.get(3);
             partition_responses.push((offset as u64, key, value));
         }
+        */
         responses.push((topic.0.to_string(), partition_responses));
     }
+    db.pool.tcp.release(conn);
     debug!("About to send a fetch response with content {:?}", responses);
     KafkaResponse {
         header: KafkaResponseHeader::new(header.correlation_id),
@@ -197,7 +223,7 @@ fn handle_fetch_offsets(header: &KafkaRequestHeader, topics: &Vec<TopicWithParti
 }
 
 fn handle_offsets(header: &KafkaRequestHeader, topics: &Vec<(String, Vec<(u32, i64)>)>, db: &PgState) -> KafkaResponse {
-    let conn = db.pool.get().expect("Could not get a DB connection");
+    let conn = db.pool.tcp.acquire().expect("Could not get a DB connection");
     let mut responses: Vec<(String, Vec<(u32, i64)>)> = Vec::new();
     for topic in topics {
         let mut partition_responses: Vec<(u32, i64)> = Vec::new();
@@ -205,8 +231,11 @@ fn handle_offsets(header: &KafkaRequestHeader, topics: &Vec<(String, Vec<(u32, i
         let offset: i64 = match topic.1.get(0).map(|t| t.1).unwrap_or(-1) {
             -2 => 0, // Start from the beginning
             -1 => {  // Start from the current HEAD
+				/*
                 let rs = conn.query(format!("SELECT max(id) + 1 FROM \"{}\"", topic.0).as_str(), &[]).expect("DB query failed");
                 rs.iter().next().and_then(|r| r.get_opt(0)).unwrap_or(Ok(-1)).unwrap_or(-1)
+                */
+                0
             },
             _ => -1 // TODO Support lookup by an actual timestamp
         };
@@ -215,8 +244,8 @@ fn handle_offsets(header: &KafkaRequestHeader, topics: &Vec<(String, Vec<(u32, i
         }
         responses.push((topic.0.to_string(), partition_responses));
     }
+    db.pool.tcp.release(conn);
     debug!("About to send a offsets response with content {:?}", responses);
-
     KafkaResponse {
         header: KafkaResponseHeader::new(header.correlation_id),
         req: ApiResponse::OffsetsResponse {
@@ -249,15 +278,4 @@ fn handle_leave_group(req: &KafkaRequest) -> KafkaResponse {
 }
 
 pub fn cleanup(db: &PgState) {
-    debug!("Cleanup thread is awake");
-    let conn = db.pool.get().expect("Could not get a DB connection");
-    for (_, topic) in &db.topics {
-        if let Some(retention) = topic.retention {
-            debug!("Cleaning up topic {}", topic.name);
-            conn.execute(format!("DELETE FROM \"{}\" WHERE ts < now() - $1::text::interval",
-                    topic.name).as_str(),
-                    &[&format!("{}ms", retention)]).expect("Failed to delete from the DB");
-        }
-    }
-    debug!("Cleanup thread is sleeping");
 }

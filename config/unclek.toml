@@ -21,7 +21,7 @@ topics = [
 ]
 
 [database]
-url = "postgres://avorona:avorona@localhost"
+url = "localhost:1234"
 
 
 # Alternative syntax for topics

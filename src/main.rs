@@ -7,8 +7,7 @@ extern crate tokio_service;
 extern crate tokio_timer;
 
 // DB pool
-extern crate r2d2;
-extern crate r2d2_postgres;
+extern crate net_utils as utils;
 
 // Parser for the requests
 #[macro_use]
